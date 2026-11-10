@@ -61,6 +61,8 @@ def build():
         shutil.copy2(ROOT / name, package / name)
     licenses = package / "licenses"
     licenses.mkdir()
+    # Framework Python installers do not always put LICENSE at sys.base_prefix.
+    shutil.copy2(ROOT / "licenses/Python-LICENSE.txt", licenses / "Python-LICENSE.txt")
     for candidate in (Path(sys.base_prefix) / "LICENSE.txt", Path(sys.base_prefix) / "LICENSE"):
         if candidate.is_file():
             shutil.copy2(candidate, licenses / "Python-LICENSE.txt")
