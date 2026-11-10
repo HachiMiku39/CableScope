@@ -29,8 +29,9 @@ def build():
     os.chdir(ROOT)
     import PyInstaller.__main__
     PyInstaller.__main__.run(["--noconfirm", "--clean", "--onedir", "--console", "--name", "CableScope",
-                             "--collect-submodules", "cablescope.backends", "--add-data", "cablescope/web:cablescope/web",
-                             "--distpath", "build/runtime", "--workpath", "build/pyinstaller", "--specpath", "build", "run.py"])
+                             "--collect-submodules", "cablescope.backends", "--add-data", str(ROOT / "cablescope/web") + ":cablescope/web",
+                             "--distpath", str(ROOT / "build/runtime"), "--workpath", str(ROOT / "build/pyinstaller"),
+                             "--specpath", str(ROOT / "build"), str(ROOT / "run.py")])
     package = ROOT / "build" / ("CableScope-" + args.target)
     if package.exists():
         shutil.rmtree(package)
