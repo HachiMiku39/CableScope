@@ -19,11 +19,30 @@
     "appId": "org.cablescope.desktop",
     "productName": "CableScope",
     "asar": true,
-    "directories": {"output": "dist/desktop"},
-    "files": ["desktop/**/*.cjs", "!desktop/test/**", "package.json", "LICENSE", "THIRD_PARTY_NOTICES.md"],
-    "extraResources": [{"from": "build/runtime/CableScope", "to": "collector"}, {"from": "licenses", "to": "licenses"}],
+    "directories": {
+      "output": "dist/desktop"
+    },
+    "files": [
+      "desktop/**/*.cjs",
+      "!desktop/test/**",
+      "package.json",
+      "LICENSE",
+      "THIRD_PARTY_NOTICES.md"
+    ],
+    "extraResources": [
+      {
+        "from": "build/runtime/CableScope",
+        "to": "collector"
+      },
+      {
+        "from": "licenses",
+        "to": "licenses"
+      }
+    ],
     "mac": {
-      "target": ["zip"],
+      "target": [
+        "zip"
+      ],
       "category": "public.app-category.utilities",
       "minimumSystemVersion": "15.0",
       "identity": "-",
@@ -31,10 +50,14 @@
       "artifactName": "CableScope-${version}-macos-${arch}.zip"
     },
     "win": {
-      "target": ["portable"],
+      "target": [
+        "portable"
+      ],
       "signAndEditExecutable": false,
       "artifactName": "CableScope-${version}-windows-${arch}.exe"
     },
-    "portable": {"requestExecutionLevel": "user", "unpackDirName": "CableScope-${version}-${arch}"}
+    "portable": {
+      "requestExecutionLevel": "user"
+    }
   }
 }
