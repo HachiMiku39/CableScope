@@ -9,3 +9,5 @@ The Windows implementation uses the public structures and queries described in [
 Binary packages include the Python runtime under the [Python Software Foundation licence](https://docs.python.org/3/license.html). PyInstaller's bootloader is distributed under its [GPL licence with the bootloader exception](https://pyinstaller.org/en/stable/license.html), which permits bundling independently licensed applications. The packaging script copies available installed Python and PyInstaller licence files into the package's `licenses` directory.
 
 CableScope's own code is MIT licensed. System frameworks and APIs belong to their respective owners.
+
+Version 0.4 embeds Electron, distributed under its MIT licence and Chromium/Node.js third-party notices. electron-builder preserves Electron's `LICENSE` and `LICENSES.chromium.html` in the application distribution. The embedded collector includes the Python, PyInstaller and WhatCable MIT notices under its `licenses` directory.

@@ -10,3 +10,4 @@ dist/
 *.log
 smoke-output.json
 work/
+node_modules/

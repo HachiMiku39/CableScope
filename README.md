@@ -2,13 +2,13 @@
 
 免费、MIT 开源的本地 USB-C 连接观察工具。Windows 与 macOS 共用中文界面，按系统实际提供的数据展示结果。运行时无需账户，也不会向外部服务上传设备信息。
 
-当前为 **0.3：网页 + 本机采集程序**，已加入 Mac 只读 SMC 功率、协商诊断、引脚路由、显示模式比较和结构化线缆测试记录。Windows 能运行不代表能读取与 Apple Silicon 相同的底层数据。[功能与实测范围](docs/FEATURES.md)列出了已实现能力和缺口。
+当前为 **0.4：Electron 客户端 + 公开网页**，已加入 Mac 只读 SMC 功率、协商诊断、引脚路由、显示模式比较和结构化线缆测试记录。Windows 能运行不代表能读取与 Apple Silicon 相同的底层数据。[功能与实测范围](docs/FEATURES.md)列出了已实现能力和缺口。
 
 ## 网页入口与配对
 
-[打开 CableScope 网页](https://cablescope-lab.leisurelyhorse4.chatgpt.site/)。当前部署为创建者私有；需要网页所属账户访问。源码和采集程序仍可独立下载、离线使用。
+[打开 CableScope 网页](https://cablescope-lab.leisurelyhorse4.chatgpt.site/)。已向所有人开放，不需要账户。也可下载 Electron 客户端，直接在独立窗口查看本机数据。
 
-1. 下载并启动 **0.3 或更新版本**的本机采集程序。Windows x64 / ARM64 和两种 Mac 均有对应包。
+1. 从 [Releases](https://github.com/HachiMiku39/CableScope/releases/latest) 下载并启动客户端。Windows x64 / ARM64 和两种 Mac 均有对应包。客户端内无需配对；只有外部网页需要以下步骤。
 2. 程序打开本机控制页，显示八位配对码与端口，默认端口为 `47831`。
 3. 在网页填写配对码，点击“连接本机”。如浏览器询问，允许该网页访问本机；实时连接建议使用 Chrome / Edge。浏览器版本与企业策略可能限制网页访问本机，此时仍可使用本机控制页。
 4. 配对码五分钟有效且只能使用一次；连续五次错误后，须在本机页刷新。网页会话一小时有效，只保存在页面内存中，不写入网址或浏览器存储。
@@ -20,18 +20,20 @@
 
 ## 下载与运行
 
-在本仓库 **Actions → Build CableScope → 最近一次成功构建 → Artifacts** 中下载对应文件。解开 Artifact 后，再解开里面的产品 ZIP。
+从 [GitHub Releases](https://github.com/HachiMiku39/CableScope/releases/latest) 直接下载，无需登录 GitHub。每次发布只有四个平台全部构建、启动与界面检查通过后才公开。
 
-| 下载包 | 系统 | 启动方式 |
+| 文件 | 系统 | 启动方式 |
 |---|---|---|
-| `windows-x64` | Windows 10/11 x64 | 解压整个目录，双击 `CableScope.exe` |
-| `windows-arm64` | Windows 11 ARM64 | 同上，原生 ARM64 解释器与程序 |
-| `macos-arm64` | macOS 15+，Apple Silicon | 解压后双击 `CableScope.app` |
-| `macos-x64` | macOS 15+，Intel | 同上，部分端口底层字段可能不公开 |
+| `windows-x64.exe` | Windows 10/11 x64 | 双击直接运行 |
+| `windows-arm64.exe` | Windows 11 ARM64 | 双击直接运行，原生 ARM64 |
+| `macos-arm64.zip` | macOS 15+，Apple Silicon | 解压后把 `CableScope.app` 拖入应用程序，双击打开 |
+| `macos-x64.zip` | macOS 15+，Intel | 同上 |
 
-打包版自带 Python，不必另外安装。程序打开本机浏览器界面；点击右上角“退出”结束采样。关闭页面后，如果十分钟没有请求，服务自动结束。源码运行时也可以按 Ctrl+C 退出。
+Windows EXE 是便携自解压包，第一次启动会先解包。Mac 用 ZIP 保留完整 APP 结构与执行权限。客户端自带 Electron 和原生 Python 采集程序，不必另外安装运行环境。打开后自动启动采集，关闭窗口或点击“退出”结束自己启动的采集程序。程序使用随机本机端口，允许和其它采集实例共存；现有数据库路径不变。
 
-首版没有商业开发者签名或 Apple 公证。Mac 包只做临时签名；系统可能要求在“隐私与安全性”中允许打开已确认来源的应用。Windows 也可能显示未知发布者。构建附带 SHA-256 校验文件。
+程序的 Electron 界面不开启 Node.js 权限，只访问自己启动的本机采集程序；网页入口与下载页由系统浏览器打开。导出时可选择文件位置。免费、开源、无需账户、无授权激活。
+
+当前没有商业开发者签名或 Apple 公证。Mac 包只做临时签名；系统可能要求在“隐私与安全性”中允许打开已确认来源的应用。Windows 可能显示未知发布者。Release 附带 `SHA256SUMS.txt` 校验文件。
 
 ## 当前读取范围
 
@@ -88,12 +90,18 @@ Windows 使用 `py -3 run.py`。Mac 也可双击 `启动 Mac.command`，Windows 
 
 推送到 `main`、推送版本标签、创建 PR 或手动运行 `Build CableScope` 都会触发构建。四组任务分别使用 GitHub 的 `windows-2025`、`windows-11-arm`、`macos-15`、`macos-15-intel` 原生运行器；不进行跨架构模拟打包。
 
-每组先跑解码、SMC ABI、诊断、数据存储与配对测试、纯 JavaScript 界面渲染检查及本机服务检查，再用 PyInstaller 6.22.3 打包，随后再次检查打包程序。产物保存十四天，附带 SHA-256；不会自动发布 Release。Actions 的虚拟机通常没有真实 USB-C 配件，构建通过只证明程序可启动及基本路径可用，不能证明硬件覆盖。四种架构是否构建成功，请以实际 Actions 结果为准。
+每组先测试解码、SMC ABI、诊断、数据存储与配对，再打包并检查原生采集程序。随后用锁定版本的 Electron / electron-builder 生成 EXE 或 APP，并启动真实的打包客户端检查页面渲染、硬件快照、保存和报告。最后汇集四个平台产物、核验格式与 SHA-256，以草稿上传完整资产后一次性公开 Release。
+
+GitHub 虚拟机通常没有真实 USB-C 配件，构建与启动成功不能证明硬件覆盖；两平台的采集差异仍以上表为准。Pull Request 只构建，不发布。正式发布需提升 `package.json` 和 Python 版本；已发布版本不会自动覆盖。
 
 ```sh
 python -m unittest discover -s tests -v
+npm ci
+npm test
 python scripts/smoke.py
 ```
+
+开发 Electron 界面：先安装 Python 3.9+，再 `npm ci && npm start`。客户端编译在 GitHub 进行，源码中的 `scripts/build.py --collector-only` 负责生成每个平台原生内嵌采集程序。
 
 ## 研究与证据
 

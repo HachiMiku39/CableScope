@@ -13,23 +13,27 @@ concurrency:
 jobs:
   package:
     name: ${{ matrix.target }}
-    timeout-minutes: 25
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         include:
           - target: windows-x64
             os: windows-2025
-            python-arch: x64
+            arch: x64
+            platform: win
           - target: windows-arm64
             os: windows-11-arm
-            python-arch: arm64
+            arch: arm64
+            platform: win
           - target: macos-arm64
             os: macos-15
-            python-arch: arm64
+            arch: arm64
+            platform: mac
           - target: macos-x64
             os: macos-15-intel
-            python-arch: x64
+            arch: x64
+            platform: mac
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -38,20 +42,48 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.13'
-          architecture: ${{ matrix.python-arch }}
-      - name: Test decoding and history
-        run: python -m unittest discover -s tests -v
-      - name: Check web rendering without hardware
-        run: node scripts/test_web.cjs
-      - name: Check native backend and local UI service
-        run: python scripts/smoke.py
-      - name: Install build dependency
-        run: python -m pip install -r requirements-build.txt
-      - name: Package and check executable
-        run: python scripts/build.py --target ${{ matrix.target }}
+          architecture: ${{ matrix.arch }}
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          architecture: ${{ matrix.arch }}
+          cache: npm
+      - run: python -m unittest discover -s tests -v
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
+      - run: python scripts/smoke.py
+      - run: python -m pip install -r requirements-build.txt
+      - name: Build and test embedded native collector
+        run: python scripts/build.py --target ${{ matrix.target }} --collector-only
+      - name: Package Electron executable or app
+        run: npm run desktop:package -- --${{ matrix.platform }} --${{ matrix.arch }}
+      - name: Test packaged Electron and embedded collector
+        run: node scripts/smoke_desktop.cjs
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: CableScope-${{ matrix.target }}
-          path: dist/*
+          path: |
+            dist/desktop/CableScope-*.exe
+            dist/desktop/CableScope-*.zip
           if-no-files-found: error
           retention-days: 14
+  release:
+    name: Publish desktop release
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          pattern: CableScope-*
+          path: release-assets
+          merge-multiple: true
+      - name: Verify and publish four native clients
+        run: python scripts/publish_release.py
+        env:
+          GITHUB_TOKEN: ${{ github.token }}

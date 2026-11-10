@@ -19,6 +19,7 @@ from cablescope import __version__
 def build():
     parser = argparse.ArgumentParser()
     parser.add_argument("--target", required=True, choices=["windows-x64", "windows-arm64", "macos-arm64", "macos-x64"])
+    parser.add_argument("--collector-only", action="store_true", help="Build the embedded collector for Electron")
     args = parser.parse_args()
     win = sys.platform == "win32"
     actual = platform.machine().lower()
@@ -38,6 +39,18 @@ def build():
         shutil.rmtree(package)
     package.mkdir(parents=True)
     runtime = ROOT / "build/runtime/CableScope"
+    if args.collector_only:
+        executable = runtime / ("CableScope.exe" if win else "CableScope")
+        subprocess.run([sys.executable, "scripts/smoke.py", "--executable", str(executable)], check=True, timeout=100)
+        shutil.copytree(ROOT / "licenses", runtime / "licenses", dirs_exist_ok=True)
+        distribution = importlib.metadata.distribution("pyinstaller")
+        for entry in distribution.files or []:
+            if "license" in str(entry).lower() or entry.name == "COPYING.txt":
+                src = Path(distribution.locate_file(entry))
+                if src.is_file():
+                    shutil.copy2(src, runtime / "licenses" / ("PyInstaller-" + entry.name))
+        print("Embedded collector ready:", args.target)
+        return
     if win:
         shutil.copytree(runtime, package, dirs_exist_ok=True)
         exe = package / "CableScope.exe"
