@@ -1,5 +1,7 @@
 # WhatCable 1.5.0 静态检查与 CableScope 实现记录
 
+后续已使用 Ghidra 进行定向反编译与调用引用复核，详见 [Ghidra 分析补充](GHIDRA_ANALYSIS.md)。本文保留最初静态检查记录。
+
 检查日期：2026-11-10（Asia/Shanghai）。范围：用户提供的本地应用 `/Applications/WhatCable.app`，以及作者公开源码。未执行该应用、其 CLI 或探针；未修改安装目录。本文只保存必要的技术证据，不包含整段反编译代码、授权数据或设备序列号。
 
 ## 1. 发行与授权

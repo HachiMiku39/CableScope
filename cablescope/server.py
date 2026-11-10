@@ -10,11 +10,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 from . import __version__
+from .pairing import Pairing
 
 WEB = Path(__file__).parent / "web"
 
 
-def serve(engine, open_browser=True, port=0):
+def serve(engine, open_browser=True, port=47831, site_url="https://cablescope-lab.leisurelyhorse4.chatgpt.site/"):
+    pairing = Pairing(site_url)
     token = secrets.token_urlsafe(24)
     prefix = "/" + token + "/"
     last_request = [time.monotonic()]
@@ -32,6 +34,15 @@ def serve(engine, open_browser=True, port=0):
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Referrer-Policy", "no-referrer")
+            if getattr(self, "cors_origin", None):
+                self.send_header("Access-Control-Allow-Origin", self.cors_origin)
+                self.send_header("Vary", "Origin")
+                self.send_header("Access-Control-Expose-Headers", "Content-Disposition")
+                if self.command == "OPTIONS":
+                    self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+                    self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
+                    if self.headers.get("Access-Control-Request-Private-Network") == "true":
+                        self.send_header("Access-Control-Allow-Private-Network", "true")
             self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
             if filename:
                 self.send_header("Content-Disposition", 'attachment; filename="%s"' % filename)
@@ -43,22 +54,48 @@ def serve(engine, open_browser=True, port=0):
                 self.reply(403, '{}')
                 return None
             origin = self.headers.get("Origin")
+            path = urlsplit(self.path).path
+            if path.startswith("/bridge/"):
+                if origin != pairing.origin:
+                    self.reply(403, '{}')
+                    return None
+                self.cors_origin = origin
+                if self.command == "OPTIONS" or path in ("/bridge/health", "/bridge/pair"):
+                    return path
+                auth = self.headers.get("Authorization", "")
+                self.session_token = auth[7:] if auth.startswith("Bearer ") else ""
+                if not pairing.valid(origin, self.session_token):
+                    self.reply(401, '{"error":"配对已失效，请重新连接"}')
+                    return None
+                last_request[0] = time.monotonic()
+                return path[len("/bridge/"):]
             if origin and origin != "http://" + server.expected_host:
                 self.reply(403, '{}')
                 return None
-            path = urlsplit(self.path).path
             if not path.startswith(prefix):
                 self.reply(404, '{}')
                 return None
             last_request[0] = time.monotonic()
             return path[len(prefix):]
 
+        def do_OPTIONS(self):
+            path = self.route()
+            if path is not None and path.startswith("/bridge/"):
+                self.reply(204, b"")
+            elif path is not None:
+                self.reply(404, '{}')
+
         def do_GET(self):
             path = self.route()
             if path is None:
                 return
+            if path == "/bridge/health":
+                return self.reply(200, json.dumps({"app": "CableScope", "version": __version__, "pairing": True}))
             if path == "api/state":
-                return self.reply(200, json.dumps(engine.state(), ensure_ascii=False, allow_nan=False))
+                state = engine.state()
+                if not getattr(self, "cors_origin", None):
+                    state["bridge"] = pairing.local_info("http://" + server.expected_host)
+                return self.reply(200, json.dumps(state, ensure_ascii=False, allow_nan=False))
             if path == "api/report":
                 return self.reply(200, json.dumps({"app": "CableScope", "version": __version__, **engine.state()}, ensure_ascii=False, indent=2), filename="CableScope-report.json")
             if path == "api/history.csv":
@@ -68,7 +105,7 @@ def serve(engine, open_browser=True, port=0):
                 for row in engine.store.history(5000):
                     w.writerow([row.get(k) for k in ("at", "input_w", "adapter_rated_w", "battery_net_w", "battery_percent")])
                 return self.reply(200, "\ufeff" + data.getvalue(), "text/csv; charset=utf-8", "CableScope-power.csv")
-            files = {"": ("index.html", "text/html; charset=utf-8"), "style.css": ("style.css", "text/css; charset=utf-8"), "app.js": ("app.js", "text/javascript; charset=utf-8")}
+            files = {"": ("index.html", "text/html; charset=utf-8"), "style.css": ("style.css", "text/css; charset=utf-8"), "app.js": ("app.js", "text/javascript; charset=utf-8"), "connection.js": ("connection.js", "text/javascript; charset=utf-8")}
             if path in files:
                 name, mime = files[path]
                 return self.reply(200, (WEB / name).read_bytes(), mime)
@@ -87,6 +124,20 @@ def serve(engine, open_browser=True, port=0):
                 data = json.loads(self.rfile.read(length))
                 if not isinstance(data, dict):
                     raise ValueError("请求必须为对象")
+                if path == "/bridge/pair":
+                    result = pairing.pair(self.headers.get("Origin"), data.get("code"))
+                    if not result:
+                        return self.reply(403, '{"error":"配对码错误、已使用或已过期；请在本机窗口刷新配对码"}')
+                    last_request[0] = time.monotonic()
+                    return self.reply(200, json.dumps({"token": result, "expires_in": 3600, "version": __version__}))
+                if path == "api/disconnect" and getattr(self, "session_token", None):
+                    pairing.disconnect(self.session_token)
+                    return self.reply(200, '{"ok":true}')
+                if path in ("api/new-code", "api/revoke"):
+                    if getattr(self, "cors_origin", None):
+                        return self.reply(403, '{}')
+                    pairing.revoke() if path == "api/revoke" else pairing.rotate()
+                    return self.reply(200, '{"ok":true}')
                 if path == "api/save":
                     name, notes = data.get("name", ""), data.get("notes", "")
                     if not isinstance(name, str) or not isinstance(notes, str):

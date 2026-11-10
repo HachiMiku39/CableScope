@@ -4,7 +4,8 @@ const esc = value => String(value ?? "未知").replace(/[&<>"']/g, x => ({"&":"&
 const fmt = (n, digits=1) => typeof n === "number" && Number.isFinite(n) ? n.toFixed(digits).replace(/\.0$/, "") : "—";
 const date = at => at ? new Date(at).toLocaleString("zh-CN", {hour12:false}) : "—";
 const val = (n, unit) => fmt(n) + (n == null ? "" : " " + unit);
-let latest, closed=false;
+let latest, closed=false, polling=false;
+const request=(path,options)=>window.CableLink.request(path,options);
 function toast(message) { $("toast").textContent=message; $("toast").classList.add("show"); setTimeout(()=>$("toast").classList.remove("show"),3500); }
 function graph(rows) {
   const canvas=$("chart"), box=canvas.getBoundingClientRect(), dpr=window.devicePixelRatio||1;
@@ -28,6 +29,7 @@ function graph(rows) {
 }
 function render(data) {
   latest=data;const s=data.snapshot,p=s.power||{};
+  window.CableLink.showLocal(data.bridge);
   $("platform").textContent=s.platform+" / "+(s.loading?"首次读取中":date(s.at));
   $("status").textContent=s.loading?"正在读取":s.errors?.length?"部分数据不可用":"本机数据已更新";
   $("watts").innerHTML=fmt(p.input_w)+' <small>W</small>';
@@ -50,10 +52,16 @@ function render(data) {
   $("errors").innerHTML=(s.errors||[]).slice(0,20).map(e=>`<p class="error">${esc(e)}</p>`).join("");
   graph(data.history);
 }
-async function poll(){if(closed)return;try{const r=await fetch("api/state",{cache:"no-store"});if(!r.ok)throw Error("读取失败");render(await r.json());}catch(e){$("status").textContent="本地服务未连接";}if(!closed)setTimeout(poll,3000);}
+async function poll(){if(closed||polling||!window.CableLink.connected||window.CableLink.offline)return;polling=true;try{const r=await request("api/state");if(!r.ok)throw Error("读取失败");render(await r.json());}catch(e){$("status").textContent="本地服务未连接";}finally{polling=false;}}
 $("save-open").onclick=()=>$("save-dialog").showModal();
 $("save-cancel").onclick=()=>$("save-dialog").close();
-$("save-form").onsubmit=async e=>{e.preventDefault();try{const r=await fetch("api/save",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:$("record-name").value,notes:$("record-notes").value})});const result=await r.json();if(!r.ok)throw Error(result.error||"保存失败");$("save-dialog").close();toast("测试快照已保存在本机");render(await (await fetch("api/state")).json());}catch(e){toast(e.message);}};
-$("quit").onclick=async()=>{try{const r=await fetch("api/quit",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});if(!r.ok)throw Error();closed=true;$("status").textContent="已退出";toast("CableScope 已停止采样，可以关闭此页");}catch(e){toast("退出失败，可在启动窗口按 Ctrl+C");}};
+$("save-form").onsubmit=async e=>{e.preventDefault();try{const r=await request("api/save",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:$("record-name").value,notes:$("record-notes").value})});const result=await r.json();if(!r.ok)throw Error(result.error||"保存失败");$("save-dialog").close();toast("测试快照已保存在本机");render(await (await request("api/state")).json());}catch(e){toast(e.message);}};
+$("quit").onclick=async()=>{try{const r=await request("api/quit",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});if(!r.ok)throw Error();closed=true;$("status").textContent="已退出";toast("CableScope 已停止采样，可以关闭此页");}catch(e){toast("退出失败，可在启动窗口按 Ctrl+C");}};
+function download(blob,name){const url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+for(const [id,path,name] of [["export-json","api/report","CableScope-report.json"],["export-csv","api/history.csv","CableScope-power.csv"]])$(id).onclick=async()=>{try{if(window.CableLink.offline&&id==="export-json")return download(new Blob([JSON.stringify({app:"CableScope",version:"0.2.0",...latest},null,2)],{type:"application/json"}),name);const r=await request(path);if(!r.ok)throw Error("导出失败");download(await r.blob(),name);}catch(e){toast(e.message);}};
 window.addEventListener("resize",()=>{if(latest)graph(latest.history);});
+window.addEventListener("cablescope-connected",()=>{closed=false;poll();});
+window.CableRender=render;
+if(!window.CableLink.local){render({snapshot:{platform:"尚未连接采集程序",at:null,power:{},ports:[],devices:[],displays:[],fabric:[],errors:[],limitations:["连接本机采集程序后开始显示真实读数；也可导入 JSON 报告离线查看。"]},history:[],events:[],records:[]});$("status").textContent="未连接";}
+setInterval(poll,3000);
 poll();
