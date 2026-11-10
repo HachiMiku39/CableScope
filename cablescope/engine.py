@@ -5,6 +5,7 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 from .core import now, diagnostics
+from .analysis import enrich, ResistanceTracker
 
 
 class Store:
@@ -32,7 +33,13 @@ class Store:
     def history(self, limit=120):
         with self.connect() as db:
             rows = db.execute("SELECT at,payload FROM samples ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
-        return [{"at": at, **json.loads(p).get("power", {})} for at, p in reversed(rows)]
+        result = []
+        for at, payload in reversed(rows):
+            snapshot = json.loads(payload)
+            ports = [{"id": p["id"], "name": p["name"], "output_w": (p.get("output_power") or {}).get("watts"),
+                      "contract_w": (p.get("contract") or {}).get("watts")} for p in snapshot.get("ports", [])]
+            result.append({"at": at, **snapshot.get("power", {}), "port_power": ports, "resistance": snapshot.get("resistance")})
+        return result
 
     def save(self, name, notes, snapshot):
         name, notes = name.strip(), notes.strip()
@@ -57,14 +64,16 @@ class Engine:
         self.snapshot = {"at": now(), "platform": "正在读取", "power": {}, "ports": [], "devices": [],
                          "displays": [], "fabric": [], "errors": [], "limitations": [], "loading": True}
         self.events, self.previous = [], None
+        self.resistance = ResistanceTracker()
         self.thread = threading.Thread(target=self.run, daemon=True)
 
     def run(self):
         while not self.stop.is_set():
             started = time.monotonic()
             try:
-                snapshot = self.backend.sample()
+                snapshot = enrich(self.backend.sample())
                 snapshot["at"] = now()
+                snapshot["resistance"] = self.resistance.observe(snapshot)
                 snapshot["diagnostics"] = diagnostics(snapshot)
                 self.store.add(snapshot)
                 with self.lock:
@@ -89,9 +98,27 @@ class Engine:
         state["records"] = self.store.records()
         return state
 
-    def save(self, name, notes):
+    def save(self, name, notes, cable_info=None):
         with self.lock:
             snapshot = self.snapshot
         if snapshot.get("loading") or snapshot.get("platform") == "读取失败":
             raise ValueError("尚无有效快照，请等待读取完成。")
+        if cable_info is not None:
+            if not isinstance(cable_info, dict):
+                raise ValueError("线缆记录格式错误")
+            from .core import number
+            clean = {}
+            for key, low, high in (("length_m", .01, 1000), ("price_cny", 0, 1000000), ("softness", 1, 5)):
+                value = cable_info.get(key)
+                if value is not None:
+                    if number(value) is None or not low <= value <= high or (key == "softness" and int(value) != value):
+                        raise ValueError("线长、价格或柔软度填写不正确")
+                    clean[key] = value
+            port_id = cable_info.get("port_id")
+            if port_id:
+                matches = [p for p in snapshot.get("ports", []) if p["id"] == port_id]
+                if len(matches) != 1:
+                    raise ValueError("所选端口不在当前快照中")
+                clean["port_id"], clean["port_name"] = port_id, matches[0]["name"]
+            snapshot = {**snapshot, "cable_info": clean}
         self.store.save(name, notes, snapshot)

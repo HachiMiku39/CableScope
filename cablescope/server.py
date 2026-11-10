@@ -101,9 +101,10 @@ def serve(engine, open_browser=True, port=47831, site_url="https://cablescope-la
             if path == "api/history.csv":
                 data = io.StringIO(newline="")
                 w = csv.writer(data)
-                w.writerow(["at_UTC", "input_w_system_telemetry", "adapter_rated_w", "battery_net_w", "battery_percent"])
+                w.writerow(["at_UTC", "input_w_system_telemetry", "adapter_rated_w", "battery_net_w", "battery_percent", "contract_w", "port_power_json", "input_path_resistance_mohm"])
                 for row in engine.store.history(5000):
-                    w.writerow([row.get(k) for k in ("at", "input_w", "adapter_rated_w", "battery_net_w", "battery_percent")])
+                    w.writerow([row.get(k) for k in ("at", "input_w", "adapter_rated_w", "battery_net_w", "battery_percent", "contract_w")]
+                               + [json.dumps(row.get("port_power", []), ensure_ascii=False), (row.get("resistance") or {}).get("milliohms")])
                 return self.reply(200, "\ufeff" + data.getvalue(), "text/csv; charset=utf-8", "CableScope-power.csv")
             files = {"": ("index.html", "text/html; charset=utf-8"), "style.css": ("style.css", "text/css; charset=utf-8"), "app.js": ("app.js", "text/javascript; charset=utf-8"), "connection.js": ("connection.js", "text/javascript; charset=utf-8")}
             if path in files:
@@ -142,7 +143,7 @@ def serve(engine, open_browser=True, port=47831, site_url="https://cablescope-la
                     name, notes = data.get("name", ""), data.get("notes", "")
                     if not isinstance(name, str) or not isinstance(notes, str):
                         raise ValueError("名称和备注必须为文字")
-                    engine.save(name, notes)
+                    engine.save(name, notes, data.get("cable_info"))
                     return self.reply(200, '{"ok":true}')
                 if path == "api/quit":
                     self.reply(200, '{"ok":true}')
@@ -182,3 +183,5 @@ def serve(engine, open_browser=True, port=47831, site_url="https://cablescope-la
         engine.stop.set()
         server.server_close()
         engine.thread.join(timeout=15)
+        if not engine.thread.is_alive() and hasattr(engine.backend, "close"):
+            engine.backend.close()

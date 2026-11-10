@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 from cablescope.backends import create
 from cablescope.core import now, diagnostics
+from cablescope.analysis import enrich
 
 
 def main():
@@ -20,10 +21,14 @@ def main():
     args = parser.parse_args()
     backend = create()
     if args.json:
-        data = backend.sample()
-        data["at"] = now()
-        data["diagnostics"] = diagnostics(data)
-        print(json.dumps(data, ensure_ascii=False, indent=2, allow_nan=False))
+        try:
+            data = enrich(backend.sample())
+            data["at"] = now()
+            data["diagnostics"] = diagnostics(data)
+            print(json.dumps(data, ensure_ascii=False, indent=2, allow_nan=False))
+        finally:
+            if hasattr(backend, "close"):
+                backend.close()
         return
     from cablescope.engine import Engine
     from cablescope.server import serve

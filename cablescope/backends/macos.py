@@ -6,6 +6,8 @@ import subprocess
 import time
 
 from ..core import decode_identity, scaled, signed64, number
+from .smc import Reader as SMCReader, normal_uuid
+from ..analysis import mode_comparison
 
 
 class Registry:
@@ -18,6 +20,8 @@ class Registry:
             (self.io, "IOIteratorNext", [c.c_uint], c.c_uint),
             (self.io, "IORegistryEntryCreateCFProperties", [c.c_uint, c.POINTER(c.c_void_p), c.c_void_p, c.c_uint], c.c_int),
             (self.io, "IORegistryEntryGetRegistryEntryID", [c.c_uint, c.POINTER(c.c_uint64)], c.c_int),
+            (self.io, "IORegistryEntryGetParentEntry", [c.c_uint, c.c_char_p, c.POINTER(c.c_uint)], c.c_int),
+            (self.io, "IOObjectGetClass", [c.c_uint, c.c_void_p], c.c_int),
             (self.io, "IOObjectRelease", [c.c_uint], c.c_int),
             (self.cf, "CFPropertyListCreateData", [c.c_void_p, c.c_void_p, c.c_long, c.c_ulong, c.c_void_p], c.c_void_p),
             (self.cf, "CFDataGetLength", [c.c_void_p], c.c_long),
@@ -50,6 +54,8 @@ class Registry:
                     entry_id = c.c_uint64()
                     self.io.IORegistryEntryGetRegistryEntryID(obj, c.byref(entry_id))
                     p["_registry_id"] = str(entry_id.value)
+                    if name == "IOPort" or name.startswith(("AppleHPMInterface", "AppleTCController")):
+                        p["_controller_uuid"] = self.controller_uuid(obj)
                     result.append(p)
                 finally:
                     if data:
@@ -61,9 +67,41 @@ class Registry:
             self.io.IOObjectRelease(iterator)
         return result
 
+    def controller_uuid(self, entry):
+        owned, current = [], entry
+        try:
+            for _ in range(8):
+                parent = c.c_uint()
+                if self.io.IORegistryEntryGetParentEntry(current, b"IOService", c.byref(parent)):
+                    break
+                current = parent.value
+                owned.append(current)
+                name = c.create_string_buffer(128)
+                self.io.IOObjectGetClass(current, name)
+                if not name.value.startswith(b"AppleHPMDevice"):
+                    continue
+                props, data = c.c_void_p(), None
+                try:
+                    if self.io.IORegistryEntryCreateCFProperties(current, c.byref(props), None, 0):
+                        continue
+                    data = self.cf.CFPropertyListCreateData(None, props, 200, 0, None)
+                    if data:
+                        p = plistlib.loads(c.string_at(self.cf.CFDataGetBytePtr(data), self.cf.CFDataGetLength(data)))
+                        return normal_uuid(p.get("UUID"))
+                finally:
+                    if data:
+                        self.cf.CFRelease(data)
+                    if props:
+                        self.cf.CFRelease(props)
+        finally:
+            for obj in owned:
+                self.io.IOObjectRelease(obj)
+        return None
+
 
 def display_modes():
     cg = c.CDLL("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics")
+    cf = c.CDLL("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation")
     cg.CGGetActiveDisplayList.argtypes = [c.c_uint32, c.POINTER(c.c_uint32), c.POINTER(c.c_uint32)]
     cg.CGGetActiveDisplayList.restype = c.c_int32
     cg.CGDisplayCopyDisplayMode.argtypes = [c.c_uint32]
@@ -74,6 +112,11 @@ def display_modes():
         getattr(cg, name).restype = c.c_size_t
     cg.CGDisplayModeGetRefreshRate.argtypes = [c.c_void_p]
     cg.CGDisplayModeGetRefreshRate.restype = c.c_double
+    cg.CGDisplayCopyAllDisplayModes.argtypes = [c.c_uint32, c.c_void_p]
+    cg.CGDisplayCopyAllDisplayModes.restype = c.c_void_p
+    cf.CFArrayGetCount.argtypes, cf.CFArrayGetCount.restype = [c.c_void_p], c.c_long
+    cf.CFArrayGetValueAtIndex.argtypes, cf.CFArrayGetValueAtIndex.restype = [c.c_void_p, c.c_long], c.c_void_p
+    cf.CFRelease.argtypes = [c.c_void_p]
     cg.CGDisplayIsBuiltin.argtypes = [c.c_uint32]
     cg.CGDisplayIsBuiltin.restype = c.c_uint32
     ids, count = (c.c_uint32 * 64)(), c.c_uint32()
@@ -87,10 +130,24 @@ def display_modes():
             continue
         try:
             hz = cg.CGDisplayModeGetRefreshRate(mode)
-            result.append({"name": ("内置显示器" if cg.CGDisplayIsBuiltin(identifier) else "外接显示器") + " #%s" % identifier,
+            display = {"name": ("内置显示器" if cg.CGDisplayIsBuiltin(identifier) else "外接显示器") + " #%s" % identifier,
                            "width": cg.CGDisplayModeGetPixelWidth(mode), "height": cg.CGDisplayModeGetPixelHeight(mode),
                            "refresh_hz": round(hz, 2) if hz > 1 else None,
-                           "source": "CoreGraphics 当前像素模式；未验证 DP/HDMI 物理带宽或 DSC"})
+                           "source": "CoreGraphics 当前像素模式与系统提供的模式列表"}
+            modes, array = [], cg.CGDisplayCopyAllDisplayModes(identifier, None)
+            if array:
+                try:
+                    for i in range(min(cf.CFArrayGetCount(array), 4096)):
+                        item = cf.CFArrayGetValueAtIndex(array, i)
+                        rate = cg.CGDisplayModeGetRefreshRate(item)
+                        m = {"width": cg.CGDisplayModeGetPixelWidth(item), "height": cg.CGDisplayModeGetPixelHeight(item),
+                             "refresh_hz": round(rate, 2) if rate > 1 else None}
+                        if m not in modes:
+                            modes.append(m)
+                finally:
+                    cf.CFRelease(array)
+            display.update(mode_comparison(display, modes))
+            result.append(display)
         finally:
             cg.CGDisplayModeRelease(mode)
     return result
@@ -99,6 +156,7 @@ def display_modes():
 class Backend:
     def __init__(self):
         self.registry = Registry()
+        self.smc = SMCReader()
         self.fabric, self.fabric_time, self.fabric_error = [], -100, None
 
     def sample(self):
@@ -132,11 +190,26 @@ class Backend:
                          for p in a.get("UsbHvcMenu", [])] if ext else [],
             "source": "AppleSmartBattery.PowerTelemetryData.SystemPowerIn（系统遥测，mW）；不代表墙端功率或单端口功率",
         }
+        telemetry = self.smc.sample()
+        smc_input = telemetry.get("system")
+        if smc_input and smc_input.get("watts") is not None and (ext is True or not batteries):
+            power.update({"input_w": smc_input["watts"], "input_voltage_v": smc_input["voltage_v"],
+                          "input_current_a": smc_input["current_a"], "source": smc_input["source"] + "（DC 输入，非墙端交流功率）"})
+        power["smc_status"] = telemetry["status"]
+        power["independent_input_power"] = bool(smc_input and smc_input["independent_power"])
+        if ext is False and telemetry.get("battery_discharge_w") is not None:
+            power["battery_net_w"] = -telemetry["battery_discharge_w"]
+            power["battery_source"] = "AppleSMC PPBR 电池轨放电功率"
         identities = {}
         for p in read("IOPortTransportComponentCCUSBPDSOPp"):
             key = (p.get("ParentBuiltInPortTypeDescription"), p.get("ParentBuiltInPortNumber"))
             identities.setdefault(key, []).append(p)
         ports, seen = [], set()
+        contract_lookup, channel_lookup = {}, {}
+        for row in telemetry["contracts"]:
+            contract_lookup.setdefault(row["_uuid"], []).append(row)
+        for row in telemetry["channels"]:
+            channel_lookup.setdefault(row["_uuid"], []).append(row)
         # IOService matching includes subclasses, including HPM/TC controllers.
         raw_ports = read("IOPort")
         if not raw_ports:
@@ -150,7 +223,12 @@ class Backend:
             seen.add(p["_registry_id"])
             ids = identities.get((kind, num), [])
             connected = p.get("ConnectionActive")
+            uuid = p.get("_controller_uuid")
+            matches, channels = contract_lookup.get(uuid, []), channel_lookup.get(uuid, [])
+            contract = {k: v for k, v in matches[0].items() if not k.startswith("_")} if len(matches) == 1 and connected is True else None
+            output = {k: v for k, v in channels[0].items() if not k.startswith("_")} if len(channels) == 1 and connected is True else None
             ports.append({"id": p["_registry_id"], "name": p.get("PortDescription", "%s #%s" % (kind, num)),
+                          "number": num, "contract": contract, "output_power": output,
                           "kind": kind, "connected": connected, "transports": p.get("TransportsActive", []),
                           "orientation": {1: "方向 1", 2: "方向 2"}.get(p.get("PlugOrientation"), "未知"),
                           "cable": decode_identity(ids[0]) if connected is True and len(ids) == 1 else None,
@@ -159,6 +237,27 @@ class Backend:
                           "pin_configuration": p.get("Pin Configuration", {}),
                           "source": p.get("IOClass", "IOPort") + " 注册表属性"})
         ports.sort(key=lambda p: p["name"])
+        dp_links = []
+        for node in read("IOPortTransportStateDisplayPort"):
+            link = {"active": node.get("Active"), "lane_count": node.get("LaneCount"), "max_lane_count": node.get("MaxLaneCount"),
+                    "link_rate": node.get("LinkRate"), "link_rate_description": node.get("LinkRateDescription"),
+                    "tunneled": node.get("Tunneled"), "name": node.get("TransportDescription", "DisplayPort"),
+                    "source": "IOPortTransportStateDisplayPort；DSC 状态未解析"}
+            dp_links.append(link)
+            key = (node.get("ParentBuiltInPortTypeDescription"), node.get("ParentBuiltInPortNumber"))
+            matched = [p for p in ports if (p["kind"], p["number"]) == key]
+            if len(matched) == 1:
+                matched[0].setdefault("displayport", []).append(link)
+        inbound = [p for p in ports if p.get("contract") and "host" not in p["contract"].get("label", "").lower()]
+        if ext is True and len(inbound) == 1:
+            p = inbound[0]
+            power["input_port_id"] = p["id"]
+            power["contract_w"] = p["contract"]["watts"]
+            power["contract_voltage_v"] = p["contract"].get("voltage_v")
+            power["contract_current_a"] = p["contract"].get("current_a")
+            p["input_power"] = {"watts": power["input_w"], "voltage_v": power["input_voltage_v"],
+                                "current_a": power["input_current_a"], "source": power["source"],
+                                "scope": "系统输入轨；仅一个有效输入合同对应此端口，不是独立端口电流传感器"}
         devices = []
         for p in read("IOUSBHostDevice"):
             # 'Device Speed' is the IOUSB enumeration; bcdUSB is a descriptor version, not speed.
@@ -183,10 +282,13 @@ class Backend:
         if self.fabric_error:
             errors.append(self.fabric_error)
         return {"platform": "macOS", "power": power, "ports": ports, "devices": devices,
-                "displays": displays, "fabric": self.fabric, "errors": errors,
-                "limitations": ["未读取 SMC 单端口电流；未测线阻、柔软度或实际传输吞吐。",
+                "displays": displays, "display_links": dp_links, "fabric": self.fabric, "errors": errors,
+                "limitations": ["SMC 仅在系统允许时显示；端口输出功率与输入合同分开展示，未测柔软度或实际吞吐。",
                                 "无 E-Marker 数据仅表示未读取到，不能据此判断为低速线或假线。",
                                 "显示模式不等于面板最大能力；首版不判定 DSC 或完整 DP 带宽。"]}
+
+    def close(self):
+        self.smc.close()
 
     @staticmethod
     def _fabric(nodes, parent=""):

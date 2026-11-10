@@ -66,9 +66,18 @@ def main():
                     break
                 time.sleep(.5)
             assert state["snapshot"]["platform"] in ("macOS", "Windows"), state["snapshot"].get("errors")
-            assert json.load(request("api/save", {"name": "smoke", "notes": "synthetic test label"}))["ok"]
+            cable_info = {"length_m":1.25,"price_cny":39,"softness":4}
+            if state["snapshot"]["ports"]:
+                cable_info["port_id"] = state["snapshot"]["ports"][0]["id"]
+            assert json.load(request("api/save", {"name": "smoke", "notes": "synthetic test label", "cable_info":cable_info}))["ok"]
             report = json.load(request("api/report"))
             assert report["records"][0]["name"] == "smoke"
+            assert report["records"][0]["snapshot"]["cable_info"]["length_m"] == 1.25
+            try:
+                request("api/save", {"name":"bad","notes":"","cable_info":{"price_cny":True}})
+                raise AssertionError("Boolean accepted as a cable price")
+            except urllib.error.HTTPError as exc:
+                assert exc.code == 400
             assert b"input_w_system_telemetry" in request("api/history.csv").read()
             from urllib.parse import urlsplit
             split = urlsplit(url)

@@ -6,6 +6,7 @@ import subprocess
 import time
 import uuid
 from ..core import scaled, number
+from ..analysis import mode_comparison
 
 U8, U16, U32 = c.c_uint8, c.c_uint16, c.c_uint32
 
@@ -139,9 +140,22 @@ def displays():
         if user.EnumDisplaySettingsW(d.name, 0xffffffff, mode):
             width, height = struct.unpack_from("<II", mode, 172)
             hz = struct.unpack_from("<I", mode, 184)[0]
-            result.append({"name": d.name + " · " + d.label, "width": width, "height": height,
+            display = {"name": d.name + " · " + d.label, "width": width, "height": height,
                            "refresh_hz": hz if hz > 1 else None,
-                           "source": "EnumDisplaySettingsW 当前桌面模式（刷新率为整数）；未验证物理链路"})
+                           "source": "EnumDisplaySettingsW 当前及可选模式（刷新率为整数）"}
+            modes = []
+            for index in range(4096):
+                candidate = c.create_string_buffer(220)
+                struct.pack_into("<H", candidate, 68, 220)
+                if not user.EnumDisplaySettingsW(d.name, index, candidate):
+                    break
+                w, h = struct.unpack_from("<II", candidate, 172)
+                rate = struct.unpack_from("<I", candidate, 184)[0]
+                item = {"width": w, "height": h, "refresh_hz": rate if rate > 1 else None}
+                if item not in modes:
+                    modes.append(item)
+            display.update(mode_comparison(display, modes))
+            result.append(display)
     return result
 
 

@@ -41,6 +41,8 @@ jobs:
           architecture: ${{ matrix.python-arch }}
       - name: Test decoding and history
         run: python -m unittest discover -s tests -v
+      - name: Check web rendering without hardware
+        run: node scripts/test_web.cjs
       - name: Check native backend and local UI service
         run: python scripts/smoke.py
       - name: Install build dependency
