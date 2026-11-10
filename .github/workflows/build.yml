@@ -1,0 +1,55 @@
+name: Build CableScope
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  package:
+    name: ${{ matrix.target }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: windows-x64
+            os: windows-2025
+            python-arch: x64
+          - target: windows-arm64
+            os: windows-11-arm
+            python-arch: arm64
+          - target: macos-arm64
+            os: macos-15
+            python-arch: arm64
+          - target: macos-x64
+            os: macos-15-intel
+            python-arch: x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
+          architecture: ${{ matrix.python-arch }}
+      - name: Test decoding and history
+        run: python -m unittest discover -s tests -v
+      - name: Check native backend and local UI service
+        run: python scripts/smoke.py
+      - name: Install build dependency
+        run: python -m pip install -r requirements-build.txt
+      - name: Package and check executable
+        run: python scripts/build.py --target ${{ matrix.target }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: CableScope-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
