@@ -59,6 +59,9 @@ jobs:
         run: npm run desktop:package -- --${{ matrix.platform }} --${{ matrix.arch }}
       - name: Test packaged Electron and embedded collector
         run: node scripts/smoke_desktop.cjs
+      - name: Test final portable EXE
+        if: matrix.platform == 'win'
+        run: node scripts/smoke_desktop.cjs dist/desktop/CableScope-0.4.0-windows-${{ matrix.arch }}.exe
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: CableScope-${{ matrix.target }}

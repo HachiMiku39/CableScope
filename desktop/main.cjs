@@ -8,10 +8,12 @@ const SITE='https://cablescope-lab.leisurelyhorse4.chatgpt.site/';
 const RELEASES='https://github.com/HachiMiku39/CableScope/releases/latest';
 const smoke=process.argv.includes('--smoke-test');
 const outputArg=process.argv.find(x=>x.startsWith('--smoke-output='));
+const dataArg=process.argv.find(x=>x.startsWith('--smoke-data-dir='));
 let collector,window,allowQuit=false,quitting=false,smokeData;
 app.setName('CableScope');
 if(smoke){
-  smokeData=fs.mkdtempSync(path.join(os.tmpdir(),'cablescope-electron-'));
+  smokeData=dataArg?dataArg.slice('--smoke-data-dir='.length):fs.mkdtempSync(path.join(os.tmpdir(),'cablescope-electron-'));
+  fs.mkdirSync(path.join(smokeData,'profile'),{recursive:true});
   app.setPath('userData',path.join(smokeData,'profile'));
 }
 function external(url){if(url===SITE||url===RELEASES)shell.openExternal(url);}
@@ -71,7 +73,7 @@ if(!app.requestSingleInstanceLock()){app.quit();}else{
   app.on('before-quit',event=>{
     if(allowQuit)return;
     event.preventDefault();if(quitting)return;quitting=true;
-    Promise.resolve(collector?.stop()).finally(()=>{allowQuit=true;if(smokeData)fs.rmSync(smokeData,{recursive:true,force:true});app.quit();});
+    Promise.resolve(collector?.stop()).finally(()=>{allowQuit=true;app.quit();});
   });
   app.whenReady().then(open).catch(error=>{
     if(smoke)finishSmoke({ok:false,error:error.message},1);
