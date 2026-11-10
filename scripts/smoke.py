@@ -23,8 +23,10 @@ def main():
     assert d["platform"] in ("macOS", "Windows")
     assert isinstance(d["ports"], list) and isinstance(d["errors"], list)
     with tempfile.TemporaryDirectory(prefix="cablescope-smoke-") as tmp:
-        proc = subprocess.Popen(cmd + ["--no-browser", "--data-dir", tmp], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        proc = subprocess.Popen(cmd + ["--no-browser", "--data-dir", tmp], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                text=True, encoding="utf-8", errors="replace")
         lines = queue.Queue()
+        observed = []
         def read_lines():
             for line in proc.stdout:
                 lines.put(line.strip())
@@ -41,7 +43,8 @@ def main():
                 if line.startswith("http://127.0.0.1:"):
                     url = line
                     break
-            assert url, "No local server URL"
+                observed.append(line)
+            assert url, "No local server URL; stdout before timeout: " + repr(observed)
             def request(path="", payload=None, origin=None):
                 headers = {"Content-Type": "application/json"} if payload is not None else {}
                 if origin:

@@ -2,6 +2,7 @@ import csv
 import io
 import json
 import secrets
+import socketserver
 import threading
 import time
 import webbrowser
@@ -100,7 +101,13 @@ def serve(engine, open_browser=True, port=0):
             except (ValueError, TypeError) as exc:
                 self.reply(400, json.dumps({"error": str(exc)}, ensure_ascii=False))
 
-    server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    class LocalServer(ThreadingHTTPServer):
+        def server_bind(self):
+            # This is an explicit loopback service; avoid blocking reverse DNS.
+            socketserver.TCPServer.server_bind(self)
+            self.server_name, self.server_port = self.server_address[:2]
+
+    server = LocalServer(("127.0.0.1", port), Handler)
     server.daemon_threads = True
     server.expected_host = "127.0.0.1:%d" % server.server_port
     url = "http://" + server.expected_host + prefix
