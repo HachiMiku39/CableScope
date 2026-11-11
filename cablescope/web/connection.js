@@ -2,25 +2,46 @@
 (() => {
   const el=id=>document.getElementById(id);
   const local=(location.hostname==="127.0.0.1"||location.hostname==="localhost") && /^\/[A-Za-z0-9_-]{24,}\/$/.test(location.pathname);
-  const link=window.CableLink={local,connected:local,offline:false};
+  const tauriOrigin=location.protocol==="cablescope:"||location.hostname==="cablescope.localhost";
+  const tauri=tauriOrigin&&!!(window.__TAURI__&&window.__TAURI__.core&&typeof window.__TAURI__.core.invoke==="function");
+  const link=window.CableLink={local:local||tauri,connected:local||tauri,offline:false,tauri};
   const message=text=>{el("connection-message").textContent=text;};
   const controls=()=>{
     const connected=link.connected&&!link.offline;
     for(const id of ["save-open","quit","export-csv"]) el(id).disabled=!connected;
     el("export-json").disabled=!connected&&!link.offline;
     el("connect-button").disabled=connected;
-    if(local&&link.offline){el("connect-form").hidden=false;el("connect-button").textContent="返回实时数据";}
-    else if(local)el("connect-form").hidden=true;
+    if((local||tauri)&&link.offline){el("connect-form").hidden=false;el("connect-button").textContent="返回实时数据";}
+    else if(local||tauri)el("connect-form").hidden=true;
+  };
+  const compat=result=>{
+    const status=Number(result&&result.status)||0,ok=status>=200&&status<300;
+    const jsonValue=result&&Object.prototype.hasOwnProperty.call(result,"json")?result.json:undefined;
+    const hasText=result&&typeof result.text==="string";
+    const text=hasText?result.text:(jsonValue===undefined?"":JSON.stringify(jsonValue));
+    const headers=result&&typeof result.headers==="object"&&result.headers!==null?result.headers:{};
+    const type=typeof headers["content-type"]==="string"?headers["content-type"]:(hasText?"text/plain; charset=utf-8":"application/json; charset=utf-8");
+    return {ok,status,headers:{get:name=>{const key=String(name).toLowerCase();return headers[key]??null;}},
+      json:async()=>jsonValue!==undefined?jsonValue:JSON.parse(text||"{}"),
+      text:async()=>text,blob:async()=>new Blob([text],{type})};
   };
   link.request=async(path, options={})=>{
     if(!link.connected||link.offline) throw Error("请先连接本机采集程序");
+    if(tauri){
+      const body=options.body===undefined?undefined:(typeof options.body==="string"?JSON.parse(options.body):options.body);
+      const payload={path,method:options.method||"GET"};
+      if(body!==undefined)payload.body=body;
+      const response=await window.__TAURI__.core.invoke("api_request",{path,options:payload});
+      if(path==="api/state"&&document.title==="CableScope · 线缆实验室")document.title="CableScope IPC 就绪";
+      return compat(response);
+    }
     const headers=new Headers(options.headers||{});
     const response=await fetch(path,{...options,headers,cache:"no-store",credentials:"omit",referrerPolicy:"no-referrer",signal:AbortSignal.timeout(15000)});
     return response;
   };
   el("connect-form").onsubmit=event=>{
     event.preventDefault();
-    if(!local)return;
+    if(!local&&!tauri)return;
     link.offline=false;controls();message("已恢复本机实时读数。");window.dispatchEvent(new Event("cablescope-connected"));
   };
   el("import-report").onchange=async event=>{
@@ -42,6 +63,6 @@
     }catch(error){message(error.message);}
     event.target.value="";
   };
-  if(local){el("connect-form").hidden=true;el("connection-title").textContent="本机采集程序正在运行";el("connection-description").textContent="读数来自本机采集程序，只保存在这台电脑上。也可以导入已有报告离线查看。";}
+  if(local||tauri){el("connect-form").hidden=true;el("connection-title").textContent="本机采集程序正在运行";el("connection-description").textContent="读数来自本机采集程序，只保存在这台电脑上。也可以导入已有报告离线查看。";}
   controls();
 })();

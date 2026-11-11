@@ -5,7 +5,7 @@ use std::os::windows::process::CommandExt;
 use std::{
     env,
     ffi::OsString,
-    io::{BufRead, BufReader, Read, Write},
+    io::{BufReader, Read, Write},
     net::{SocketAddr, TcpStream, ToSocketAddrs},
     path::{Path, PathBuf},
     process::{Child, ChildStderr, ChildStdout, Command, Stdio},

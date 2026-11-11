@@ -1,13 +1,11 @@
-[workspace]
-
 [package]
 name = "CableScope"
-version = "0.4.0"
+version.workspace = true
 description = "CableScope desktop shell"
 authors = ["CableScope contributors"]
-license = "MIT"
-edition = "2021"
-rust-version = "1.85"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
 default-run = "CableScope"
 
 [lib]
@@ -28,5 +26,13 @@ tauri-plugin-single-instance = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["preserve_order"] }
+cablescope-engine = { path = "../crates/engine" }
+cablescope-backends-traits = { path = "../crates/backends-traits" }
+
+[target.'cfg(windows)'.dependencies]
+cablescope-backends-windows = { path = "../crates/backends-windows" }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+cablescope-backends-macos = { path = "../crates/backends-macos" }
 

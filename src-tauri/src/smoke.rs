@@ -1,13 +1,12 @@
-use std::{
-    ffi::OsString,
-    path::PathBuf,
-    time::{Duration, Instant},
-};
+use std::{ffi::OsString, path::PathBuf, time::Duration};
 
 use serde::Serialize;
 use serde_json::{json, Value};
 
-use crate::collector::{collector_port, http_request, request_path};
+use crate::{
+    collector::{collector_port, http_request, request_path},
+    engine_cmd::{self, EngineState},
+};
 
 const SMOKE_NAME: &str = "Tauri smoke";
 const STATE_TIMEOUT: Duration = Duration::from_secs(40);
@@ -71,6 +70,12 @@ pub struct SmokeResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub shell: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub mode: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub devices: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ports: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
@@ -87,6 +92,9 @@ impl SmokeResult {
             navigation: None,
             arch: None,
             shell: None,
+            mode: None,
+            devices: None,
+            ports: None,
             error: Some(error.into()),
             version: None,
         }
@@ -97,28 +105,17 @@ pub struct SmokeChecks {
     pub platform: String,
     pub save: bool,
     pub report: bool,
+    pub devices: usize,
+    pub ports: usize,
 }
 
-fn still_loading(state: &Value) -> bool {
-    state
-        .pointer("/snapshot/loading")
-        .map(|value| match value {
-            Value::Null => false,
-            Value::Bool(flag) => *flag,
-            Value::Number(number) => number.as_f64().unwrap_or(0.0) != 0.0,
-            Value::String(text) => !text.is_empty(),
-            Value::Array(_) | Value::Object(_) => true,
-        })
-        .unwrap_or(false)
-}
-
-pub fn run(base: &str, navigation: impl Fn() -> bool) -> Result<SmokeChecks, String> {
+pub fn run_http(base: &str, navigation: impl Fn() -> bool) -> Result<SmokeChecks, String> {
     let port = collector_port(base).ok_or("本机采集程序地址无效。")?;
     let state_path = request_path(base, "api/state").ok_or("本机采集程序地址无效。")?;
     let save_path = request_path(base, "api/save").ok_or("本机采集程序地址无效。")?;
     let report_path = request_path(base, "api/report").ok_or("本机采集程序地址无效。")?;
 
-    let deadline = Instant::now() + STATE_TIMEOUT;
+    let deadline = std::time::Instant::now() + STATE_TIMEOUT;
     let mut state: Value;
     loop {
         let (status, body) = http_request(
@@ -136,7 +133,7 @@ pub fn run(base: &str, navigation: impl Fn() -> bool) -> Result<SmokeChecks, Str
         if !still_loading(&state) {
             break;
         }
-        if Instant::now() >= deadline {
+        if std::time::Instant::now() >= deadline {
             return Err("本机采集状态加载超时。".into());
         }
         std::thread::sleep(Duration::from_millis(500));
@@ -149,6 +146,20 @@ pub fn run(base: &str, navigation: impl Fn() -> bool) -> Result<SmokeChecks, Str
     if platform != "Windows" && platform != "macOS" {
         return Err("本机采集程序未生成平台快照。".into());
     }
+    let snapshot = state.get("snapshot").unwrap_or(&Value::Null);
+    if !snapshot.get("ports").and_then(Value::as_array).is_some() {
+        return Err("本机采集状态缺少端口列表。".into());
+    }
+    let devices = snapshot
+        .get("devices")
+        .and_then(Value::as_array)
+        .map(Vec::len)
+        .unwrap_or(0);
+    let ports = snapshot
+        .get("ports")
+        .and_then(Value::as_array)
+        .map(Vec::len)
+        .unwrap_or(0);
 
     if !navigation() {
         return Err("窗口未确认加载本机页面。".into());
@@ -196,6 +207,128 @@ pub fn run(base: &str, navigation: impl Fn() -> bool) -> Result<SmokeChecks, Str
         platform,
         save: true,
         report: true,
+        devices,
+        ports,
+    })
+}
+
+fn still_loading(state: &Value) -> bool {
+    state
+        .pointer("/snapshot/loading")
+        .map(|value| match value {
+            Value::Null => false,
+            Value::Bool(flag) => *flag,
+            Value::Number(number) => number.as_f64().unwrap_or(0.0) != 0.0,
+            Value::String(text) => !text.is_empty(),
+            Value::Array(_) | Value::Object(_) => true,
+        })
+        .unwrap_or(false)
+}
+
+fn outcome(options: Option<&Value>) -> Value {
+    let mut fields = serde_json::Map::new();
+    for key in ["method", "body"] {
+        if let Some(value) = options.and_then(|v| v.get(key)) {
+            if !value.is_null() {
+                fields.insert(key.into(), value.clone());
+            }
+        }
+    }
+    Value::Object(fields)
+}
+
+fn request(state: &EngineState, path: &str, options: Option<&Value>) -> Result<Value, String> {
+    let result = engine_cmd::dispatch(state, path, Some(&outcome(options)));
+    if !(200..300).contains(&result.status) {
+        let detail = result
+            .json
+            .as_ref()
+            .and_then(|value| value.get("error"))
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        return Err(if detail.is_empty() {
+            format!("请求 {path} 失败。")
+        } else {
+            detail.to_owned()
+        });
+    }
+    if let Some(value) = result.json {
+        return Ok(value);
+    }
+    if let Some(text) = result.text {
+        return serde_json::from_str(&text).map_err(|_| format!("请求 {path} 格式异常。"));
+    }
+    Err(format!("请求 {path} 响应为空。"))
+}
+
+pub fn run_ipc(state: &EngineState, navigation: impl Fn() -> bool) -> Result<SmokeChecks, String> {
+    let deadline = std::time::Instant::now() + STATE_TIMEOUT;
+    let mut state_value: Value;
+    loop {
+        state_value = request(state, "api/state", None).map_err(|error| error)?;
+        if !still_loading(&state_value) {
+            break;
+        }
+        if std::time::Instant::now() >= deadline {
+            return Err("本机采集状态加载超时。".into());
+        }
+        std::thread::sleep(Duration::from_millis(500));
+    }
+    let platform = state_value
+        .pointer("/snapshot/platform")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_owned();
+    if platform != "Windows" && platform != "macOS" {
+        return Err("本机采集程序未生成平台快照。".into());
+    }
+    let snapshot = state_value.get("snapshot").unwrap_or(&Value::Null);
+    if !snapshot.get("ports").and_then(Value::as_array).is_some() {
+        return Err("本机采集状态缺少端口列表。".into());
+    }
+    if !navigation() {
+        return Err("窗口未确认加载本机页面。".into());
+    }
+    let devices = snapshot
+        .get("devices")
+        .and_then(Value::as_array)
+        .map(Vec::len)
+        .unwrap_or(0);
+    let ports = snapshot
+        .get("ports")
+        .and_then(Value::as_array)
+        .map(Vec::len)
+        .unwrap_or(0);
+
+    let saved = request(
+        state,
+        "api/save",
+        Some(&json!({
+            "body": {
+                "name": SMOKE_NAME,
+                "notes": "synthetic test record",
+                "cable_info": { "length_m": 1 }
+            }
+        })),
+    )?;
+    if saved.get("ok") != Some(&json!(true)) {
+        return Err("保存记录失败。".into());
+    }
+    let report = request(state, "api/report", None)?;
+    let found = report
+        .pointer("/records/0/name")
+        .and_then(Value::as_str)
+        .map(|name| name == SMOKE_NAME)
+        .unwrap_or(false);
+    if !found {
+        return Err("报告缺少已保存记录。".into());
+    }
+    Ok(SmokeChecks {
+        platform,
+        save: true,
+        report: true,
+        devices,
+        ports,
     })
 }
 

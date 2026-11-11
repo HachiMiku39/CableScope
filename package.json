@@ -8,7 +8,7 @@
   "main": "desktop/main.cjs",
   "scripts": {
     "start": "electron .",
-    "test": "node --test desktop/test/collector.test.cjs && node scripts/test_web.cjs",
+    "test": "node --test desktop/test/collector.test.cjs && node scripts/test_web.cjs && node scripts/test_web.cjs --tauri && node scripts/test_web.cjs --tauri-global-http",
     "desktop:package": "electron-builder --publish never",
     "desktop:dev": "tauri dev",
     "desktop:build": "tauri build"

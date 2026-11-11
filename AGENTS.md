@@ -6,11 +6,11 @@
 
 CableScope（线缆实验室）是免费、MIT 开源的本地 USB-C 连接观察与诊断工具，支持 Windows 10/11（x64 / ARM64）和 macOS 15+（仅 Apple Silicon，Intel Mac 已停止支持），界面与文档语言为中文。
 
-产品形态为**纯桌面 App**：网页版与外部网页配对（`/bridge/`、`pairing.py`、`site.json`、`scripts/prepare_web.py`、菜单「打开网页版」）已从代码中移除。网页 UI 文件（`cablescope/web/`）保留为应用窗口内嵌界面，由桌面壳加载本机令牌化回环 URL 渲染，不是独立产品。
+产品形态为**纯桌面 App**：网页版与外部网页配对（`/bridge/`、`pairing.py`、`site.json`、`scripts/prepare_web.py`、菜单「打开网页版」）已从代码中移除。网页 UI 文件（`cablescope/web/`）保留为应用窗口内嵌界面：Tauri 壳经 `cablescope://` 自定义协议直接伺服这些静态文件并经内部 IPC 取数；Electron 壳（在役过渡期）加载本机令牌化回环 URL。
 
-核心形态：纯 Python 3.9+ 本机采集程序（仅标准库，无第三方运行依赖），通过只回环的 HTTP 服务提供界面；桌面壳正在从 Electron（`desktop/`，仍在服役）迁移到 Tauri 2.x（`src-tauri/`，阶段一已落地：壳 + Python sidecar 过渡期，窗口加载 collector 令牌 URL，NSIS + WebView2 在线 bootstrapper）。运行时无需账户、不向外部服务上传设备信息。
+核心形态：纯 Python 3.9+ 本机采集程序（仅标准库，无第三方运行依赖）与等价 Rust 采集引擎并存；桌面壳正在从 Electron（`desktop/`，仍在服役）迁移到 Tauri 2.x（`src-tauri/`）。Tauri 壳阶段二已落地：默认直接用 Rust `cablescope-engine` 原生采样，前端经 `window.__TAURI__.core.invoke("api_request")` 内部 IPC 取数，不经 HTTP；设 `CABLESCOPE_COLLECTOR=python` 可回退到阶段一的 Python sidecar + 令牌回环 URL 路径。打包形态为 NSIS currentUser + WebView2 在线 bootstrapper。运行时无需账户、不向外部服务上传设备信息。
 
-后端正在分波次重写为 Rust（根 `Cargo.toml` workspace + `crates/`）：`core`（数值清洗/PD3 VDO 解码/诊断 + `py` 语义兼容层）、`analysis`（诊断/回归/enrich）、`engine`（rusqlite 存储 + 采样线程）、`backends-traits`、`backends-windows`、`backends-macos`+`smc`（FFI 经 `aarch64-apple-darwin` check 验证，真机读取待 Mac 实测）、`cli`（`--json` 单次采集，Windows 真机字段级差分零差异）已移植。`server` crate 为占位（纯 App 形态下终态走 Tauri IPC，不需要 loopback HTTP 服务）。在 Rust 版达到对等并通过全部黑盒验收前，Python 版仍是发布与打包形态。
+后端正在分波次重写为 Rust（根 `Cargo.toml` workspace + `crates/` + `src-tauri/`）：`core`（数值清洗/PD3 VDO 解码/诊断 + `py` 语义兼容层）、`analysis`（诊断/回归/enrich）、`engine`（rusqlite 存储 + 采样线程）、`backends-traits`、`backends-windows`、`backends-macos`+`smc`（FFI 手写 extern "C"，编译期 ABI 断言；CI macos-26 全绿）、`cli`（`--json` 单次采集，Windows 真机字段级差分零差异）已移植并接入 Tauri。`server` crate 为占位（纯 App 形态下不需要 loopback HTTP 服务，计划移除）。在 Tauri 发布流程（check_release/build.yml 接入）完成前，Python + Electron 仍是发布形态。
 
 数据采集完全只读：不修改注册表、不写 SMC、不重启控制器、不切换供电角色、不安装驱动、不主动制造负载。所有诊断结论必须基于证据，证据不足时保持"未知"，不生成"线缆是瓶颈"之类的推断。
 
@@ -25,12 +25,12 @@ CableScope（线缆实验室）是免费、MIT 开源的本地 USB-C 连接观�
 | `cablescope/analysis.py` | 纯函数诊断：USB-C 24 引脚逻辑路由图（`pin_map`）、显示模式比较（`mode_comparison`，不得跨模式拼分辨率/刷新率）、协商诊断（`negotiation`，电源公布值/线缆声明/合同/实测分列）、输入路径等效电阻被动回归（`ResistanceTracker`，见下）、`enrich` 快照增强 |
 | `cablescope/engine.py` | `Store`：sqlite3 两张表（`samples` 保留最近 5000 条、`records` 上限 500 份、界面展示最近 50 份）；`Engine`：后台线程每 5 秒采样，维护最近 100 条插拔事件，校验快照名称（1–80 字）与备注（≤1000 字）、线缆信息（线长/价格/柔软度范围） |
 | `cablescope/server.py` | `ThreadingHTTPServer` 只监听 `127.0.0.1`；随机令牌 URL 前缀；严格 Host 校验、本地 Origin 校验、CSP、`no-store`、POST 限 8 KiB 且仅 application/json；空闲 600 秒自动退出 |
-| `cablescope/web/` | 无构建步骤的原生 JS 界面：`index.html`、`style.css`、`app.js`（渲染与图表）、`connection.js`（本机/离线导入两种模式）。任何用户数据进 DOM 前必须经过 `esc()` 转义 |
+| `cablescope/web/` | 无构建步骤的原生 JS 界面：`index.html`、`style.css`、`app.js`（渲染与图表）、`connection.js`（三种 transport：Tauri IPC `cablescope://` origin、本机 HTTP 令牌 URL（Electron/Python）、离线导入）。任何用户数据进 DOM 前必须经过 `esc()` 转义 |
 | `desktop/` | Electron 壳（现役）。`main.cjs` 单实例窗口（禁 Node 集成、禁导航外跳、下载走系统对话框）；`collector.cjs` 启动/停止采集子进程，只接受子进程打印的令牌化回环 URL；`test/collector.test.cjs` |
-| `src-tauri/` | Tauri 2 壳（阶段一，过渡期）。collector 监督器为 `collector.cjs` 协议的 Rust 移植（令牌 URL 白名单/8 KiB 缓冲/30s/3.5s）；单实例插件；导航仅放行 collector base；`capabilities/desktop-minimal.json` 仅 core 默认权限；`build.rs` 编译期断言 package.json ↔ tauri.conf.json ↔ `__init__.py` 版本一致；打包 NSIS currentUser + WebView2 downloadBootstrapper |
+| `src-tauri/` | Tauri 2 壳（根 workspace 成员）。默认路径：Rust 原生 `cablescope-engine` 采样 + 前端 IPC（`engine_cmd.rs` 的 `api_request` 通用端点按 path/method 分发 state/save/report/csv/quit，复刻 engine.py 校验与中文文案；`native.rs` 以 `cablescope://` 自定义协议伺服 `cablescope/web/` 四个静态文件）。`CABLESCOPE_COLLECTOR=python` 回退到 Python sidecar 令牌 URL（`collector.rs` 为 collector.cjs 协议 Rust 移植，令牌 URL 白名单/8 KiB 缓冲/30s/3.5s）。单实例插件；导航仅放行前端 origin 与 collector base；capabilities 仅 core 默认 + `withGlobalTauri`；CSP `connect-src 'self' ipc: http://ipc.localhost`；`build.rs` 断言 package.json ↔ `__init__.py` ↔ 根 workspace 版本一致；打包 NSIS currentUser + WebView2 downloadBootstrapper |
 | `scripts/build.py` | PyInstaller 打包原生采集程序；`--collector-only` 供桌面壳内嵌；只允许在本机架构/系统运行（拒绝交叉编译），打包后自动跑 `smoke.py` |
 | `scripts/smoke.py` | 真实后端 + 真实 HTTP 进程冒烟：快照、静态资源、保存/报告、CSV、跨源 403、退出码 |
-| `scripts/smoke_tauri.cjs` | 对打包后的 Tauri raw exe 跑 `--smoke-test`（真实渲染、保存、报告、导航） |
+| `scripts/smoke_tauri.cjs` | 对根 `target/release` 的 Tauri exe 跑 `--smoke-test`：断言 `mode:"ipc"`、真实渲染窗口经 IPC 往返、保存/报告、非空 devices/ports（真机硬件覆盖） |
 | `scripts/diff_rust_python.py` | Python 版与 Rust CLI `--json` 快照的字段级差分（忽略 `at`；数组顺序无关比较），CI 与本地通用 |
 | `scripts/test_web.cjs` | 无浏览器渲染测试：用 `vm` 加载前端 JS，校验 UI id、XSS 转义、图表与筛选 |
 | `scripts/smoke_desktop.cjs` | 对打包后的 Electron 客户端跑 `--smoke-test`（真实渲染、保存、报告） |
@@ -58,8 +58,8 @@ python -m unittest discover -s tests -v   # Python 单元测试
 npm ci && npm test                        # Node：collector 测试 + 网页渲染测试
 python scripts/smoke.py                   # 真实后端 + 真实服务进程冒烟
 
-# Rust 后端（87 个单元测试，合成数据）
-cargo test --workspace
+# Rust 后端 + Tauri 壳（98 个单元测试，合成数据；workspace 含 src-tauri）
+cargo test --workspace --locked
 # Python ↔ Rust 真机差分（CI 的 rust-macos job 同款）
 python3 run.py --json > py.json && cargo run -q -p cablescope-cli -- --json > rust.json
 python3 scripts/diff_rust_python.py py.json rust.json
@@ -70,11 +70,11 @@ cargo check --target aarch64-apple-darwin -p cablescope-smc -p cablescope-backen
 # Electron 界面开发（本机需有 Python，Windows 可用 CABLESCOPE_PYTHON 指定）
 npm ci && npm start
 
-# Tauri 壳（阶段一）
-npm run desktop:dev                       # 开发（源码 collector）
-npm run desktop:build                     # 打包 NSIS（先 build.py --collector-only）
-node scripts/smoke_tauri.cjs              # raw exe 冒烟
-cd src-tauri && cargo test                # 壳单元测试
+# Tauri 壳（阶段二：默认 Rust 原生 Engine + IPC，无需 Python）
+npm run desktop:dev                       # 开发
+npm run desktop:build                     # 打包 NSIS（默认含 Rust 引擎；仍内嵌 collector 资源供 python 回退）
+node scripts/smoke_tauri.cjs              # 根 target/release 冒烟（mode 必须为 ipc）
+CABLESCOPE_COLLECTOR=python node scripts/smoke_tauri.cjs   # 显式验证 Python sidecar 回退（mode 为 python-collector）
 
 # 打包（只能在对应平台的原生机器上运行，CI 中执行）
 python -m pip install -r requirements-build.txt
@@ -88,7 +88,7 @@ node scripts/smoke_desktop.cjs --portable                       # Windows 便携
 
 - 单元测试必须可在无硬件的 GitHub 运行器上通过：所有平台结构体布局、解码、拟合门槛都用合成数据验证，禁止依赖真实 USB 配件。
 - `python scripts/smoke.py` 会启动真实采集进程并监听端口，是唯一接触硬件的自动化测试；CI 明确声明"构建与启动成功不能证明硬件覆盖"。
-- Rust 移植以 `py -3` 差分向量固定 Python 语义（银行家舍入、真值、max 并列取第一个、CPython 补偿求和等）；Windows 后端已做真机字段级差分（`scripts/diff_rust_python.py`），macOS 后端经 `rust-macos` CI job（macos-26 runner，仅 Apple Silicon）做构建、测试与差分，真实硬件读取覆盖仍待有外设的机器补验。
+- Rust 移植以 `py -3` 差分向量固定 Python 语义（银行家舍入、真值、max 并列取第一个、CPython 补偿求和等）；Windows 后端已做真机字段级差分（`scripts/diff_rust_python.py`），macOS 后端经 `rust-macos` CI job（macos-26 runner）真机构建、测试与差分全绿；插外设才有的数据（E-Marker/PD 合同）runner 覆盖不了，文档已声明。
 - 前端渲染测试（`scripts/test_web.cjs`）不经过浏览器布局，只验证 DOM id 存在、内容转义与逻辑分支。
 - 集成断言风格：大量 `assert`（smoke 脚本）与 `assertEqual/assertRaises`（unittest）中文文案校验并存，改动用户可见文案时注意同步测试。
 
@@ -112,6 +112,7 @@ node scripts/smoke_desktop.cjs --portable                       # Windows 便携
 ## 安全注意事项
 
 - HTTP 服务只绑 `127.0.0.1`；`Host` 不匹配、来源不匹配一律 403；本地页面 URL 含随机令牌前缀。
+- Tauri 路径无 HTTP：前端仅在 `cablescope://` 自定义协议 origin 且全局 Tauri API 存在时启用 IPC；`api_request` 是唯一 command 面，按 path/method 白名单分发，保存载荷复刻 Python 侧长度/类型校验。
 - 响应一律带 CSP（`default-src 'self'` 等）、`X-Content-Type-Options: nosniff`、`Referrer-Policy: no-referrer`、`Cache-Control: no-store`；新增端点时保持这些头。
 - SQLite 全部参数化查询；保存的名称/备注长度有上限并校验类型（布尔不可作为数值）。
 - 默认不保存序列号、MAC、主机名；导出的 JSON 报告仍含设备名、VID/PID 与时间，文档已提示用户按需分享——不要静默扩大收集范围。

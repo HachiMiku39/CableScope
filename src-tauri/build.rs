@@ -33,11 +33,31 @@ fn python_version(text: &str) -> String {
     panic!("__version__ not found in cablescope/__init__.py")
 }
 
+fn workspace_version(text: &str) -> String {
+    let mut in_workspace_package = false;
+    for line in text.lines() {
+        let line = line.trim();
+        if line.starts_with('[') {
+            in_workspace_package = line == "[workspace.package]";
+            continue;
+        }
+        if !in_workspace_package {
+            continue;
+        }
+        if let Some(value) = line.strip_prefix("version") {
+            let value = value.trim_start().strip_prefix('=').unwrap_or(value).trim();
+            return value.trim_matches(['"', '\'']).to_owned();
+        }
+    }
+    panic!("[workspace.package] version not found in root Cargo.toml")
+}
+
 fn main() {
     let root = manifest_dir().join("..");
     for path in [
         root.join("package.json"),
         root.join("cablescope/__init__.py"),
+        root.join("Cargo.toml"),
         manifest_dir().join("tauri.conf.json"),
     ] {
         println!("cargo:rerun-if-changed={}", path.display());
@@ -45,10 +65,12 @@ fn main() {
 
     let package_version = json_string(&read_root("package.json"), "version");
     let tauri_version = json_string(&read_root("src-tauri/tauri.conf.json"), "version");
+    let workspace = workspace_version(&read_root("Cargo.toml"));
     let python = python_version(&read_root("cablescope/__init__.py"));
-    if package_version != tauri_version || package_version != python {
+    if package_version != workspace || package_version != python || package_version != tauri_version
+    {
         eprintln!(
-            "version mismatch: package.json={package_version}, tauri.conf.json={tauri_version}, cablescope/__init__.py={python}"
+            "version mismatch: package.json={package_version}, Cargo.toml [workspace.package]={workspace}, tauri.conf.json={tauri_version}, cablescope/__init__.py={python}"
         );
         exit(1);
     }

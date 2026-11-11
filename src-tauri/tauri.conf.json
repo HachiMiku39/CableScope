@@ -24,14 +24,14 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'",
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost; frame-ancestors 'none'; base-uri 'none'",
       "capabilities": ["desktop-minimal"],
       "assetProtocol": {
         "enable": false,
         "scope": []
       }
     },
-    "withGlobalTauri": false
+    "withGlobalTauri": true
   },
   "bundle": {
     "active": true,
