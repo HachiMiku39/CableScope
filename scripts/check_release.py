@@ -1,4 +1,4 @@
-"""Verify and hash the four desktop assets before publication."""
+"""Verify and hash the three desktop assets before publication."""
 import hashlib
 import json
 from pathlib import Path
@@ -9,7 +9,7 @@ import zipfile
 def check(folder):
     version = json.loads(Path("package.json").read_text())["version"]
     expected = ["CableScope-%s-windows-%s.exe" % (version, arch) for arch in ("x64", "arm64")]
-    expected += ["CableScope-%s-macos-%s.zip" % (version, arch) for arch in ("x64", "arm64")]
+    expected += ["CableScope-%s-macos-arm64.zip" % version]
     hashes = []
     for name in expected:
         path = folder / name
@@ -24,7 +24,7 @@ def check(folder):
                 assert "CableScope.app/Contents/Resources/collector/CableScope" in archive.namelist()
         hashes.append(hashlib.sha256(path.read_bytes()).hexdigest() + "  " + name)
     (folder / "SHA256SUMS.txt").write_text("\n".join(hashes) + "\n", encoding="ascii")
-    print("Four desktop assets verified and hashed.")
+    print("Three desktop assets verified and hashed.")
 
 
 if __name__ == "__main__":

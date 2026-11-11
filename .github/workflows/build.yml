@@ -27,12 +27,8 @@ jobs:
             arch: arm64
             platform: win
           - target: macos-arm64
-            os: macos-15
+            os: macos-26
             arch: arm64
-            platform: mac
-          - target: macos-x64
-            os: macos-15-intel
-            arch: x64
             platform: mac
     runs-on: ${{ matrix.os }}
     steps:

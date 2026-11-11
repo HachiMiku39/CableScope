@@ -4,7 +4,7 @@
 
 ## 项目概述
 
-CableScope（线缆实验室）是免费、MIT 开源的本地 USB-C 连接观察与诊断工具，支持 Windows 10/11（x64 / ARM64）和 macOS 15+（Apple Silicon / Intel），界面与文档语言为中文。
+CableScope（线缆实验室）是免费、MIT 开源的本地 USB-C 连接观察与诊断工具，支持 Windows 10/11（x64 / ARM64）和 macOS 15+（仅 Apple Silicon，Intel Mac 已停止支持），界面与文档语言为中文。
 
 产品形态为**纯桌面 App**：网页版与外部网页配对（`/bridge/`、`pairing.py`、`site.json`、`scripts/prepare_web.py`、菜单「打开网页版」）已从代码中移除。网页 UI 文件（`cablescope/web/`）保留为应用窗口内嵌界面，由桌面壳加载本机令牌化回环 URL 渲染，不是独立产品。
 
@@ -34,7 +34,7 @@ CableScope（线缆实验室）是免费、MIT 开源的本地 USB-C 连接观�
 | `scripts/diff_rust_python.py` | Python 版与 Rust CLI `--json` 快照的字段级差分（忽略 `at`；数组顺序无关比较），CI 与本地通用 |
 | `scripts/test_web.cjs` | 无浏览器渲染测试：用 `vm` 加载前端 JS，校验 UI id、XSS 转义、图表与筛选 |
 | `scripts/smoke_desktop.cjs` | 对打包后的 Electron 客户端跑 `--smoke-test`（真实渲染、保存、报告） |
-| `scripts/check_release.py` / `scripts/publish_release.py` | 发布前校验四个平台产物并生成 `SHA256SUMS.txt`；仅以草稿 Release 上传，已发布版本不可覆盖（当前按 Electron 产物校验，Tauri 产物接入待阶段二） |
+| `scripts/check_release.py` / `scripts/publish_release.py` | 发布前校验三个平台产物并生成 `SHA256SUMS.txt`；仅以草稿 Release 上传，已发布版本不可覆盖（当前按 Electron 产物校验，Tauri 产物接入待阶段二） |
 | `tests/` | 标准库 unittest：`test_core.py`（PD 解码、Windows IOCTL/Hub 连接器属性结构、存储）、`test_features.py`（SMC ABI、引脚图、模式比较、电阻门槛） |
 | `启动 Windows.bat` / `启动 Mac.command` | 源码运行的双击启动器（要求预装 Python） |
 | `licenses/` | Python 与 WhatCable（SMC ABI 参考来源，见 `docs/WHATCABLE_ANALYSIS.md`）许可证 |
@@ -78,7 +78,7 @@ cd src-tauri && cargo test                # 壳单元测试
 
 # 打包（只能在对应平台的原生机器上运行，CI 中执行）
 python -m pip install -r requirements-build.txt
-python scripts/build.py --target windows-x64 --collector-only   # 或 windows-arm64 / macos-arm64 / macos-x64
+python scripts/build.py --target windows-x64 --collector-only   # 或 windows-arm64 / macos-arm64
 npm run desktop:package -- --mac --arm64                        # electron-builder
 node scripts/smoke_desktop.cjs                                  # 需先完成打包
 node scripts/smoke_desktop.cjs --portable                       # Windows 便携 EXE
@@ -88,15 +88,15 @@ node scripts/smoke_desktop.cjs --portable                       # Windows 便携
 
 - 单元测试必须可在无硬件的 GitHub 运行器上通过：所有平台结构体布局、解码、拟合门槛都用合成数据验证，禁止依赖真实 USB 配件。
 - `python scripts/smoke.py` 会启动真实采集进程并监听端口，是唯一接触硬件的自动化测试；CI 明确声明"构建与启动成功不能证明硬件覆盖"。
-- Rust 移植以 `py -3` 差分向量固定 Python 语义（银行家舍入、真值、max 并列取第一个、CPython 补偿求和等）；Windows 后端已做真机字段级差分（`scripts/diff_rust_python.py`），macOS 后端经 `rust-macos` CI job（macos-15 / macos-15-intel 双 runner）做构建、测试与差分，真实硬件读取覆盖仍待有外设的机器补验。
+- Rust 移植以 `py -3` 差分向量固定 Python 语义（银行家舍入、真值、max 并列取第一个、CPython 补偿求和等）；Windows 后端已做真机字段级差分（`scripts/diff_rust_python.py`），macOS 后端经 `rust-macos` CI job（macos-26 runner，仅 Apple Silicon）做构建、测试与差分，真实硬件读取覆盖仍待有外设的机器补验。
 - 前端渲染测试（`scripts/test_web.cjs`）不经过浏览器布局，只验证 DOM id 存在、内容转义与逻辑分支。
 - 集成断言风格：大量 `assert`（smoke 脚本）与 `assertEqual/assertRaises`（unittest）中文文案校验并存，改动用户可见文案时注意同步测试。
 
 ## 发布流程
 
-由 `.github/workflows/build.yml` 驱动：推送 `main`、推送 `v*` 标签、开 PR 或手动触发都会构建；四个矩阵任务分别用 `windows-2025`、`windows-11-arm`、`macos-15`、`macos-15-intel` 原生运行器，每组顺序为 单测 → npm test → smoke.py → collector 打包 → electron-builder → 打包客户端冒烟（Windows 额外测便携 EXE）。PR 只构建不发布；`release` job 在 main 分支上收集四平台产物，经 `check_release.py` 校验（大小、MZ 头、zip 完整性、app 结构）后由 `publish_release.py` 以**草稿** Release 上传。正式发布必须同时提升 `package.json`、`cablescope/__init__.py` 与 `Cargo.toml`（`[workspace.package] version`）的版本号；已发布版本不会被覆盖。
+由 `.github/workflows/build.yml` 驱动：推送 `main`、推送 `v*` 标签、开 PR 或手动触发都会构建；三个矩阵任务分别用 `windows-2025`、`windows-11-arm`、`macos-26` 原生运行器（macOS 仅 Apple Silicon，Intel 已停止支持），每组顺序为 单测 → npm test → smoke.py → collector 打包 → electron-builder → 打包客户端冒烟（Windows 额外测便携 EXE）。PR 只构建不发布；`release` job 在 main 分支上收集三平台产物，经 `check_release.py` 校验（大小、MZ 头、zip 完整性、app 结构）后由 `publish_release.py` 以**草稿** Release 上传。正式发布必须同时提升 `package.json`、`cablescope/__init__.py` 与 `Cargo.toml`（`[workspace.package] version`）的版本号；已发布版本不会被覆盖。
 
-另设 `.github/workflows/rust-macos.yml`：macos-15 / macos-15-intel 双 runner 跑 `cargo test --workspace --locked` + Python/Rust 快照字段级差分 + Python unittest 回归（不发布产物）。Electron → Tauri 迁移完成后，`build.yml` 的 electron-builder 阶段与 `check_release.py` 的 Electron 产物校验将替换为 Tauri NSIS/dmg 校验。
+另设 `.github/workflows/rust-macos.yml`：macos-26 runner 跑 `cargo test --workspace --locked` + Python/Rust 快照字段级差分 + Python unittest 回归（不发布产物）。Electron → Tauri 迁移完成后，`build.yml` 的 electron-builder 阶段与 `check_release.py` 的 Electron 产物校验将替换为 Tauri NSIS/dmg 校验。
 
 ## 代码风格与约定
 

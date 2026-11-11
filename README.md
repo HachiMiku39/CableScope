@@ -6,14 +6,13 @@
 
 ## 下载与运行
 
-从 [GitHub Releases](https://github.com/HachiMiku39/CableScope/releases/latest) 直接下载，无需登录 GitHub。每次发布只有四个平台全部构建、启动与界面检查通过后才公开。
+从 [GitHub Releases](https://github.com/HachiMiku39/CableScope/releases/latest) 直接下载，无需登录 GitHub。每次发布只有三个平台全部构建、启动与界面检查通过后才公开。
 
 | 文件 | 系统 | 启动方式 |
 |---|---|---|
 | `windows-x64.exe` | Windows 10/11 x64 | 双击直接运行 |
 | `windows-arm64.exe` | Windows 11 ARM64 | 双击直接运行，原生 ARM64 |
 | `macos-arm64.zip` | macOS 15+，Apple Silicon | 解压后把 `CableScope.app` 拖入应用程序，双击打开 |
-| `macos-x64.zip` | macOS 15+，Intel | 同上 |
 
 Windows EXE 是便携自解压包，第一次启动会先解包。Mac 用 ZIP 保留完整 APP 结构与执行权限。客户端自带 Electron 和原生 Python 采集程序，不必另外安装运行环境。打开后自动启动采集，关闭窗口或点击“退出”结束自己启动的采集程序。程序使用随机本机端口，允许和其它采集实例共存；现有数据库路径不变。
 
@@ -74,9 +73,9 @@ Windows 使用 `py -3 run.py`。Mac 也可双击 `启动 Mac.command`，Windows 
 
 ## GitHub 云编译
 
-推送到 `main`、推送版本标签、创建 PR 或手动运行 `Build CableScope` 都会触发构建。四组任务分别使用 GitHub 的 `windows-2025`、`windows-11-arm`、`macos-15`、`macos-15-intel` 原生运行器；不进行跨架构模拟打包。
+推送到 `main`、推送版本标签、创建 PR 或手动运行 `Build CableScope` 都会触发构建。三组任务分别使用 GitHub 的 `windows-2025`、`windows-11-arm`、`macos-26` 原生运行器；不进行跨架构模拟打包。
 
-每组先测试解码、SMC ABI、诊断与数据存储，再打包并检查原生采集程序。随后用锁定版本的 Electron / electron-builder 生成 EXE 或 APP，并启动真实的打包客户端检查页面渲染、硬件快照、保存和报告。最后汇集四个平台产物、核验格式与 SHA-256，以草稿上传完整资产后一次性公开 Release。
+每组先测试解码、SMC ABI、诊断与数据存储，再打包并检查原生采集程序。随后用锁定版本的 Electron / electron-builder 生成 EXE 或 APP，并启动真实的打包客户端检查页面渲染、硬件快照、保存和报告。最后汇集三个平台产物、核验格式与 SHA-256，以草稿上传完整资产后一次性公开 Release。
 
 GitHub 虚拟机通常没有真实 USB-C 配件，构建与启动成功不能证明硬件覆盖；两平台的采集差异仍以上表为准。Pull Request 只构建，不发布。正式发布需提升 `package.json` 和 Python 版本；已发布版本不会自动覆盖。
 
