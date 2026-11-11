@@ -4,7 +4,6 @@ const path=require('node:path');
 const fs=require('node:fs');
 const os=require('node:os');
 const {startCollector}=require('./collector.cjs');
-const SITE='https://cablescope-lab.leisurelyhorse4.chatgpt.site/';
 const RELEASES='https://github.com/HachiMiku39/CableScope/releases/latest';
 const smoke=process.argv.includes('--smoke-test');
 const outputArg=process.argv.find(x=>x.startsWith('--smoke-output='));
@@ -16,7 +15,7 @@ if(smoke){
   fs.mkdirSync(path.join(smokeData,'profile'),{recursive:true});
   app.setPath('userData',path.join(smokeData,'profile'));
 }
-function external(url){if(url===SITE||url===RELEASES)shell.openExternal(url);}
+function external(url){if(url===RELEASES)shell.openExternal(url);}
 function finishSmoke(result,code){
   if(outputArg)fs.writeFileSync(outputArg.slice('--smoke-output='.length),JSON.stringify(result));
   process.exitCode=code;app.quit();
@@ -44,7 +43,7 @@ async function open(){
   });
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     ...(process.platform==='darwin'?[{label:'CableScope',submenu:[{role:'about'},{type:'separator'},{role:'quit',label:'退出 CableScope'}]}]:[]),
-    {label:'文件',submenu:[{label:'打开网页版',click:()=>external(SITE)},{type:'separator'},{role:'quit',label:'退出'}]},
+    {label:'文件',submenu:[{role:'quit',label:'退出'}]},
     {label:'编辑',submenu:[{role:'undo'},{role:'redo'},{type:'separator'},{role:'cut'},{role:'copy'},{role:'paste'},{role:'selectAll'}]},
     {label:'显示',submenu:[{role:'reload'},{role:'resetZoom'},{role:'zoomIn'},{role:'zoomOut'},{role:'togglefullscreen'}]},
     {label:'帮助',submenu:[{label:'下载与更新',click:()=>external(RELEASES)}]}

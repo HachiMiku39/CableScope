@@ -45,7 +45,6 @@ function graph(rows) {
 }
 function render(data) {
   latest=data;const s=data.snapshot,p=s.power||{};
-  window.CableLink.showLocal(data.bridge);
   $("platform").textContent=s.platform+" / "+(s.loading?"首次读取中":date(s.at));
   $("status").textContent=s.loading?"正在读取":s.errors?.length?"部分数据不可用":"本机数据已更新";
   $("watts").innerHTML=fmt(p.input_w)+' <small>W</small>';
@@ -60,13 +59,13 @@ function render(data) {
   if(!$("save-dialog").open){const selected=$("record-port").value;$("record-port").innerHTML='<option value="">整机快照，不归属特定端口</option>'+s.ports.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("");$("record-port").value=selected;}
   $("profiles").innerHTML=p.profiles?.length?p.profiles.map(x=>`<span class="chip">${esc(val(x.voltage_v,"V"))} / ${esc(val(x.current_a,"A"))}</span>`).join(""):'<span class="muted">系统未提供档位列表。</span>';
   $("diagnostics").innerHTML=(s.diagnostics||[]).map(n=>`<div class="note ${n.level==="warn"?"warn":""}"><b>${esc(n.title)}</b><p>${esc(n.text)}</p></div>`).join("")||'<p class="muted">正在读取系统状态…</p>';
-  $("port-grid").innerHTML=s.ports.length?s.ports.map(p=>{const c=p.cable;return `<article class="panel"><div class="port-top"><h3>${esc(p.name)}</h3><span class="port-status ${p.connected===true?"":"disconnected"}">${p.connected===true?"● 已连接":p.connected===false?"○ 未连接":"状态未知"}</span></div><div class="protocol">${esc(p.transports?.join(" · ")||"无已知活动协议")}</div><dl><dt>E-Marker 声明速率</dt><dd>${esc(c?.speed||"未读取到")}</dd><dt>线缆声明电流</dt><dd>${esc(val(c?.current_a,"A"))}</dd><dt>线缆声明功率上限</dt><dd>${esc(val(c?.power_ceiling_w,"W"))}</dd><dt>插头方向 / 过流累计</dt><dd>${esc(p.orientation)} / ${esc(p.overcurrent_count??"未知")}</dd><dt>供应商 VID / 产品 PID</dt><dd>${c?esc([c.vendor_id,c.product_id].map(v=>v==null?"未知":"0x"+v.toString(16).padStart(4,"0")).join(" / ")):"—"}</dd></dl>${advancedPort(p)}<details><summary>查看原始声明与引脚配置</summary><pre>${esc(JSON.stringify({vdo:c?.vdo_hex||[],pin_configuration:p.pin_configuration,plug_count:p.plug_count,liquid_detected:p.liquid_detected,source:p.source},null,2))}</pre></details><div class="footnote">${esc(c?.note||"未读取到 E-Marker，不代表线缆不支持高速或大功率。")}</div></article>`;}).join(""):'<article class="panel empty">'+(s.loading?'正在读取…':'此系统未公开可识别的 USB-C 物理端口。下方仍可查看 USB 设备；Windows 首版尚未读取 UCSI 的线缆身份。')+'</article>';
+  $("port-grid").innerHTML=s.ports.length?s.ports.map(p=>{const c=p.cable;return `<article class="panel"><div class="port-top"><h3>${esc(p.name)}</h3><span class="port-status ${p.connected===true?"":"disconnected"}">${p.connected===true?"● 已连接":p.connected===false?"○ 未连接":"状态未知"}</span></div><div class="protocol">${esc(p.transports?.join(" · ")||"无已知活动协议")}</div><dl><dt>E-Marker 声明速率</dt><dd>${esc(c?.speed||"未读取到")}</dd><dt>线缆声明电流</dt><dd>${esc(val(c?.current_a,"A"))}</dd><dt>线缆声明功率上限</dt><dd>${esc(val(c?.power_ceiling_w,"W"))}</dd><dt>插头方向 / 过流累计</dt><dd>${esc(p.orientation)} / ${esc(p.overcurrent_count??"未知")}</dd><dt>供应商 VID / 产品 PID</dt><dd>${c?esc([c.vendor_id,c.product_id].map(v=>v==null?"未知":"0x"+v.toString(16).padStart(4,"0")).join(" / ")):"—"}</dd></dl>${advancedPort(p)}<details><summary>查看原始声明与引脚配置</summary><pre>${esc(JSON.stringify({vdo:c?.vdo_hex||[],pin_configuration:p.pin_configuration,plug_count:p.plug_count,liquid_detected:p.liquid_detected,source:p.source},null,2))}</pre></details><div class="footnote">${esc(c?.note||"未读取到 E-Marker，不代表线缆不支持高速或大功率。")}</div></article>`;}).join(""):'<article class="panel empty">'+(s.loading?'正在读取…':'此系统未提供可读取的 USB-C 物理端口数据。下方仍可查看 USB 设备；本机未提供可读取的 UCSI 线缆身份数据。')+'</article>';
   const devices=(id,list,fn,empty)=>{$(id).innerHTML=list.length?list.map(fn).join(""):`<p class="empty">${empty}</p>`;};
   devices("display-list",s.displays,d=>`<div class="device"><b>${esc(d.name)}</b><p class="device-value">${esc(d.width)} × ${esc(d.height)} · ${d.refresh_hz==null?"刷新率未知":esc(fmt(d.refresh_hz))+" Hz"}</p><p>${esc(d.source)}</p>${d.highest_mode?`<p>系统最高模式：${esc(d.highest_mode.width)} × ${esc(d.highest_mode.height)} · ${esc(val(d.highest_mode.refresh_hz,"Hz"))}</p><p>${esc(d.verdict)}</p>`:""}</div>`,"未读取到当前显示模式；这不证明没有显示器连接。");
   devices("usb-list",s.devices,d=>`<div class="device"><b>${esc(d.name)}</b><p class="device-value">${esc(d.speed)}</p><p>${esc(d.location||d.vendor||"")} ${esc(d.source)}</p></div>`,"没有读取到 USB 设备。");
   devices("fabric-list",s.fabric,d=>`<div class="device"><b>${esc(d.name)}</b><p class="device-value">${esc(d.speed)}</p><p>${esc(d.mode)} · ${esc(d.path)}</p></div>`,"没有可用的 Thunderbolt / USB4 拓扑数据。");
   $("dp-list").innerHTML=(s.display_links||[]).map(d=>`<div class="device"><b>${esc(d.name)}</b><p>${d.active===true?"链路活动":"链路未活动 / 状态未知"} · ${esc(d.lane_count??"未知")} lanes · ${esc(d.link_rate_description||("原始速率编码 "+(d.link_rate??"未知")))}</p><p>${d.tunneled===true?"通过隧道传输":"非隧道或未提供状态"} · DSC 未解析</p></div>`).join("");
-  $("events").innerHTML=data.events.length?data.events.slice(0,10).map(e=>`<div class="device"><b>${esc(e.text)}</b><p>${esc(date(e.at))}</p></div>`).join(""):'<p class="empty">本次运行还没有观察到物理端口状态变化。Windows 首版不记录物理 USB-C 口插拔。</p>';
+  $("events").innerHTML=data.events.length?data.events.slice(0,10).map(e=>`<div class="device"><b>${esc(e.text)}</b><p>${esc(date(e.at))}</p></div>`).join(""):'<p class="empty">本次运行还没有观察到物理端口状态变化。本机未提供可读取的物理 USB-C 口插拔状态，Hub 端口候选不代表已连接。</p>';
   $("limits").innerHTML=(s.limitations||[]).map(l=>`<li>${esc(l)}</li>`).join("");
   $("errors").innerHTML=(s.errors||[]).slice(0,20).map(e=>`<p class="error">${esc(e)}</p>`).join("");
   renderRecords(data.records);
@@ -84,6 +83,5 @@ for(const [id,path,name] of [["export-json","api/report","CableScope-report.json
 window.addEventListener("resize",()=>{if(latest)graph(latest.history);});
 window.addEventListener("cablescope-connected",()=>{closed=false;poll();});
 window.CableRender=render;
-if(!window.CableLink.local){render({snapshot:{platform:"尚未连接采集程序",at:null,power:{},ports:[],devices:[],displays:[],fabric:[],errors:[],limitations:["连接本机采集程序后开始显示真实读数；也可导入 JSON 报告离线查看。"]},history:[],events:[],records:[]});$("status").textContent="未连接";}
 setInterval(poll,3000);
 poll();

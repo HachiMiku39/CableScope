@@ -45,12 +45,11 @@ def main():
                     break
                 observed.append(line)
             assert url, "No local server URL; stdout before timeout: " + repr(observed)
-            def request(path="", payload=None, origin=None, headers_extra=None, method=None, absolute=False):
+            def request(path="", payload=None, origin=None):
                 headers = {"Content-Type": "application/json"} if payload is not None else {}
                 if origin:
                     headers["Origin"] = origin
-                headers.update(headers_extra or {})
-                req = urllib.request.Request((path if absolute else url + path), data=json.dumps(payload).encode() if payload is not None else None, headers=headers, method=method)
+                req = urllib.request.Request(url + path, data=json.dumps(payload).encode() if payload is not None else None, headers=headers)
                 return urllib.request.urlopen(req, timeout=10)
             assert "CableScope" in request().read().decode()
             assert b"function render" in request("app.js").read()
@@ -79,35 +78,6 @@ def main():
             except urllib.error.HTTPError as exc:
                 assert exc.code == 400
             assert b"input_w_system_telemetry" in request("api/history.csv").read()
-            from urllib.parse import urlsplit
-            split = urlsplit(url)
-            bridge = split.scheme + "://" + split.netloc + "/bridge/"
-            site = "https://cablescope-lab.leisurelyhorse4.chatgpt.site"
-            code = state["bridge"]["code"]
-            preflight = request(bridge+"api/state", origin=site, method="OPTIONS", absolute=True,
-                                headers_extra={"Access-Control-Request-Method":"GET", "Access-Control-Request-Headers":"authorization"})
-            assert preflight.status == 204 and preflight.headers["Access-Control-Allow-Origin"] == site
-            try:
-                request(bridge+"api/state", origin=site, absolute=True)
-                raise AssertionError("Unpaired hardware read allowed")
-            except urllib.error.HTTPError as exc:
-                assert exc.code == 401
-            token = json.load(request(bridge+"pair", {"code":code}, site, absolute=True))["token"]
-            remote = json.load(request(bridge+"api/state", origin=site, absolute=True, headers_extra={"Authorization":"Bearer "+token}))
-            assert "bridge" not in remote, "Pairing code leaked to remote website"
-            for endpoint in ("pair", "api/state"):
-                try:
-                    request(bridge+endpoint, {"code":code} if endpoint=="pair" else None, "https://evil.invalid", absolute=True,
-                            headers_extra={"Authorization":"Bearer "+token})
-                    raise AssertionError("Untrusted origin accepted")
-                except urllib.error.HTTPError as exc:
-                    assert exc.code == 403 and exc.headers.get("Access-Control-Allow-Origin") is None
-            assert json.load(request("api/revoke", {}))["ok"]
-            try:
-                request(bridge+"api/state", origin=site, absolute=True, headers_extra={"Authorization":"Bearer "+token})
-                raise AssertionError("Revoked session accepted")
-            except urllib.error.HTTPError as exc:
-                assert exc.code == 401
             assert json.load(request("api/quit", {}))["ok"]
             proc.wait(timeout=20)
             assert proc.returncode == 0
@@ -115,7 +85,7 @@ def main():
             if proc.poll() is None:
                 proc.kill()
                 proc.wait()
-    print("Native snapshot, assets, exports, save, pairing, CORS, revocation and shutdown passed.")
+    print("Native snapshot, assets, exports, save, cross-origin rejection and shutdown passed.")
 
 
 if __name__ == "__main__":

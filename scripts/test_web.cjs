@@ -6,7 +6,7 @@ for(const match of html.matchAll(/id="([^"]+)"/g))elements.set(match[1],{value:'
   getBoundingClientRect:()=>({width:700,height:195}),getContext:()=>ctx,showModal(){this.open=true;},close(){this.open=false;}});
 elements.get('chart-mode').value='system';
 const window={devicePixelRatio:1,addEventListener(){},dispatchEvent(){}},document={getElementById:id=>{assert(elements.has(id),'Unknown UI id: '+id);return elements.get(id);},createElement:()=>({click(){}})};
-const sandbox={window,document,location:{hostname:'cablescope-lab.leisurelyhorse4.chatgpt.site',pathname:'/'},Headers,AbortSignal,Blob,URL,
+const sandbox={window,document,location:{hostname:'127.0.0.1',pathname:'/AAAAAAAAAAAAAAAAAAAAAAAA/'},Headers,AbortSignal,Blob,URL,
   setTimeout:()=>0,setInterval:()=>0,Event:class{},fetch:()=>{throw Error('Network access is not part of this render test');},console};
 vm.createContext(sandbox);
 for(const file of ['connection.js','app.js'])vm.runInContext(fs.readFileSync(path.join(root,'cablescope/web',file),'utf8'),sandbox,{filename:file});
@@ -28,10 +28,36 @@ assert(elements.get('resistance-reading').innerHTML.includes('有效样本'));
 if(!process.argv[2]){
   assert(!elements.get('port-grid').innerHTML.includes('<img src=x'));
   assert(elements.get('port-grid').innerHTML.includes('&lt;img'));
+  assert(elements.get('port-grid').innerHTML.includes('pin-diagram'));
   assert(elements.get('display-list').innerHTML.includes('3840'));
   assert(elements.get('records').innerHTML.includes('我的线'));
   elements.get('record-filter').value='不存在的线';elements.get('record-filter').oninput();
   assert(elements.get('records').innerHTML.includes('没有匹配'));
+  assert(!elements.get('port-grid').innerHTML.includes('Windows 首版'));
+  assert(elements.get('events').innerHTML.includes('本机未提供可读取的物理 USB-C 口插拔状态'));
+  assert(!elements.get('port-grid').innerHTML.includes('本机未提供可读取的 UCSI 线缆身份数据'));
+  const candidate={id:'candidate-1',name:'USB-C 候选 · Hub #2 Port 1',kind:'USB-C',connected:null,
+    contract:null,output_power:null,input_power:null,cable:null,pin_configuration:{},pin_map:null,
+    overcurrent_count:null,plug_count:null,liquid_detected:null,orientation:null,
+    source:'Hub IOCTL 端口属性（候选，未确认机身物理口）',
+    negotiation:{notes:['缺少完整链路上限，不生成线缆瓶颈结论'],source:'不同来源分列'}};
+  const emptyState={...state,snapshot:{...snapshot,platform:'Windows',ports:[candidate],
+    limitations:['本机固件未暴露可读取的 UCSI 设备节点或 WMI 数据面'],events:undefined},events:[]};
+  window.CableRender(emptyState);
+  const candidateHtml=elements.get('port-grid').innerHTML;
+  assert(candidateHtml.includes('USB-C 候选 · Hub #2 Port 1'));
+  assert(candidateHtml.includes('状态未知'));
+  assert(!candidateHtml.includes('● 已连接'));
+  assert(!candidateHtml.includes('undefined'));
+  assert(!candidateHtml.includes('pin-diagram'));
+  assert(candidateHtml.includes('缺少完整链路上限'));
+  assert(elements.get('port-count').textContent==='0 / 1');
+  assert(elements.get('limits').innerHTML.includes('本机固件未暴露可读取的 UCSI 设备节点或 WMI 数据面'));
+  assert(elements.get('events').innerHTML.includes('本机未提供可读取的物理 USB-C 口插拔状态'));
+  const noPorts={...state,snapshot:{...emptyState.snapshot,ports:[]},events:[]};
+  window.CableRender(noPorts);
+  assert(elements.get('port-grid').innerHTML.includes('本机未提供可读取的 UCSI 线缆身份数据'));
+  window.CableRender(state);
 }
 elements.get('chart-mode').value='ports';elements.get('chart-mode').onchange();
 assert(elements.get('chart-legend').innerHTML.length>0);

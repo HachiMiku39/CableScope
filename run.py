@@ -16,7 +16,6 @@ def main():
     parser.add_argument("--json", action="store_true", help="读取一次并输出 JSON，不保存历史")
     parser.add_argument("--no-browser", action="store_true")
     parser.add_argument("--port", type=int, default=47831)
-    parser.add_argument("--site-url", help="允许配对的 HTTPS 网页，默认使用 CableScope 网页入口")
     parser.add_argument("--data-dir", type=Path, help="自选历史数据目录；打包版使用本机应用数据目录")
     args = parser.parse_args()
     backend = create()
@@ -38,8 +37,7 @@ def main():
     else:
         data_dir = Path(__file__).resolve().parent / "data"
     engine = Engine(backend, (args.data_dir or data_dir) / "history.sqlite3")
-    site = json.loads((Path(__file__).resolve().parent / "cablescope/site.json").read_text())["url"]
-    serve(engine, not args.no_browser, args.port, args.site_url or site)
+    serve(engine, not args.no_browser, args.port)
 
 
 if __name__ == "__main__":
