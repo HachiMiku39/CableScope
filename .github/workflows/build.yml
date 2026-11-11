@@ -66,7 +66,17 @@ jobs:
       - name: Package portable release archive
         run: python scripts/package_tauri.py ${{ matrix.target }}
       - name: Extract portable release archive
-        run: python -c "import json,pathlib,zipfile; v=json.loads(pathlib.Path('package.json').read_text())['version']; a=pathlib.Path('dist/desktop')/('CableScope-%s-${{ matrix.target }}.zip'%v); d=pathlib.Path('dist/unpacked'); d.mkdir(parents=True,exist_ok=True); zipfile.ZipFile(a).extractall(d)"
+        shell: bash
+        run: |
+          set -e
+          ZIP="dist/desktop/CableScope-$(python3 -c 'import json;print(json.load(open("package.json"))["version"])')-${{ matrix.target }}.zip"
+          mkdir -p dist/unpacked
+          if [ "${{ matrix.target }}" = "macos-arm64" ]; then
+            # ditto restores Unix permissions and symlinks that zipfile.extractall drops.
+            ditto -x -k "$ZIP" dist/unpacked
+          else
+            python3 -c 'import sys,zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])' "$ZIP" dist/unpacked
+          fi
       - name: Test unpacked portable release
         run: node scripts/smoke_tauri.cjs dist/unpacked/${{ matrix.exe }}
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
