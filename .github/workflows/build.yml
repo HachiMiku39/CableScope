@@ -49,6 +49,15 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm test
       - run: python scripts/smoke.py
+      - name: Rust unit tests (macOS parity gate)
+        if: matrix.target == 'macos-arm64'
+        run: cargo test --workspace --locked
+      - name: Python ↔ Rust field-level differential (macOS)
+        if: matrix.target == 'macos-arm64'
+        run: |
+          python3 run.py --json > py.json
+          cargo run -q -p cablescope-cli -- --json > rust.json
+          python3 scripts/diff_rust_python.py py.json rust.json --verbose
       - run: python -m pip install -r requirements-build.txt
       - name: Build and test embedded native collector
         run: python scripts/build.py --target ${{ matrix.target }} --collector-only

@@ -59,7 +59,7 @@ python scripts/smoke.py                   # 真实后端 + 真实服务进程冒
 
 # Rust 后端 + Tauri 壳（98 个单元测试，合成数据；workspace 含 src-tauri）
 cargo test --workspace --locked
-# Python ↔ Rust 真机差分（CI 的 rust-macos job 同款）
+# Python ↔ Rust 真机差分（CI macOS job 同款）
 python3 run.py --json > py.json && cargo run -q -p cablescope-cli -- --json > rust.json
 python3 scripts/diff_rust_python.py py.json rust.json
 
@@ -82,15 +82,13 @@ python scripts/build.py --target windows-x64 --collector-only   # 或 windows-ar
 
 - 单元测试必须可在无硬件的 GitHub 运行器上通过：所有平台结构体布局、解码、拟合门槛都用合成数据验证，禁止依赖真实 USB 配件。
 - `python scripts/smoke.py` 会启动真实采集进程并监听端口，是唯一接触硬件的自动化测试；CI 明确声明"构建与启动成功不能证明硬件覆盖"。
-- Rust 移植以 `py -3` 差分向量固定 Python 语义（银行家舍入、真值、max 并列取第一个、CPython 补偿求和等）；Windows 后端已做真机字段级差分（`scripts/diff_rust_python.py`），macOS 后端经 `rust-macos` CI job（macos-26 runner）真机构建、测试与差分全绿；插外设才有的数据（E-Marker/PD 合同）runner 覆盖不了，文档已声明。
+- Rust 移植以 `py -3` 差分向量固定 Python 语义（银行家舍入、真值、max 并列取第一个、CPython 补偿求和等）；Windows 后端已做真机字段级差分（`scripts/diff_rust_python.py`），macOS 后端经 build.yml 的 macos-26 job 真机构建、单测与差分全绿；插外设才有的数据（E-Marker/PD 合同）runner 覆盖不了，文档已声明。
 - 前端渲染测试（`scripts/test_web.cjs`）不经过浏览器布局，只验证 DOM id 存在、内容转义与逻辑分支。
 - 集成断言风格：大量 `assert`（smoke 脚本）与 `assertEqual/assertRaises`（unittest）中文文案校验并存，改动用户可见文案时注意同步测试。
 
 ## 发布流程
 
-由 `.github/workflows/build.yml` 驱动：推送 `main`、推送 `v*` 标签、开 PR 或手动触发都会构建；三个矩阵任务分别用 `windows-2025`、`windows-11-arm`、`macos-26` 原生运行器（macOS 仅 Apple Silicon，Intel 已停止支持），每组顺序为 单测 → npm test → smoke.py → collector 打包（Python 回退资源）→ `tauri build` → `package_tauri.py` 打便携 zip → 解压产物跑 `smoke_tauri.cjs`（mode 必须为 ipc）。PR 只构建不发布；`release` job 在 main 分支上收集三平台 zip，经 `check_release.py` 校验（大小下限、MZ 头、zip 完整性、.app 结构）后由 `publish_release.py` 以**草稿** Release 上传。正式发布必须同时提升 `package.json`、`cablescope/__init__.py` 与 `Cargo.toml`（`[workspace.package] version`）的版本号；已发布版本不会被覆盖。
-
-另设 `.github/workflows/rust-macos.yml`：macos-26 runner 跑 `cargo test --workspace --locked`（含 Tauri 壳编译）+ Python/Rust 快照字段级差分 + Python unittest 回归（不发布产物）。
+由 `.github/workflows/build.yml` 驱动（唯一的构建/发布 workflow）：推送 `main`、推送 `v*` 标签、开 PR 或手动触发都会构建；三个矩阵任务分别用 `windows-2025`、`windows-11-arm`、`macos-26` 原生运行器（macOS 仅 Apple Silicon，Intel 已停止支持），每组顺序为 单测 → npm test → smoke.py →（macOS 额外：`cargo test --workspace --locked` + Python/Rust 快照字段级差分）→ collector 打包（Python 回退资源）→ `tauri build` → `package_tauri.py` 打便携 zip → 解压产物跑 `smoke_tauri.cjs`（mode 必须为 ipc）。PR 只构建不发布；`release` job 在 main 分支上收集三平台 zip，经 `check_release.py` 校验（大小下限、MZ 头、zip 完整性、.app 结构）后由 `publish_release.py` 以**草稿** Release 上传。正式发布必须同时提升 `package.json`、`cablescope/__init__.py` 与 `Cargo.toml`（`[workspace.package] version`）的版本号；已发布版本不会被覆盖。
 
 ## 代码风格与约定
 
