@@ -9,9 +9,12 @@
   "scripts": {
     "start": "electron .",
     "test": "node --test desktop/test/collector.test.cjs && node scripts/test_web.cjs",
-    "desktop:package": "electron-builder --publish never"
+    "desktop:package": "electron-builder --publish never",
+    "desktop:dev": "tauri dev",
+    "desktop:build": "tauri build"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2",
     "electron": "45.2.3",
     "electron-builder": "26.18.0"
   },
