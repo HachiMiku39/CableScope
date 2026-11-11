@@ -35,7 +35,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis", "app", "dmg"],
+    "targets": ["app"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -50,14 +50,6 @@
     "macOS": {
       "minimumSystemVersion": "15.0",
       "hardenedRuntime": false
-    },
-    "windows": {
-      "webviewInstallMode": {
-        "type": "downloadBootstrapper"
-      },
-      "nsis": {
-        "installMode": "currentUser"
-      }
     }
   }
 }

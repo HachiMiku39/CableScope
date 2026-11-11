@@ -76,5 +76,16 @@ fn main() {
     }
     println!("cargo:rustc-env=CABLESCOPE_VERSION={package_version}");
 
+    // tauri-build validates bundle resources even for `cargo test` on a fresh
+    // checkout, but the embedded Python collector is only produced by
+    // scripts/build.py during packaging. Create an empty placeholder so
+    // test-only builds pass; real packaging runs after build.py and embeds
+    // the actual collector. The default Rust-Engine path never reads it.
+    let collector_resource = root.join("build/runtime/CableScope");
+    if !collector_resource.is_dir() {
+        fs::create_dir_all(&collector_resource).expect("create collector resource placeholder");
+    }
+    println!("cargo:rerun-if-changed={}", collector_resource.display());
+
     tauri_build::build();
 }

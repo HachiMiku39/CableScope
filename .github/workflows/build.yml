@@ -13,7 +13,7 @@ concurrency:
 jobs:
   package:
     name: ${{ matrix.target }}
-    timeout-minutes: 30
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -21,15 +21,15 @@ jobs:
           - target: windows-x64
             os: windows-2025
             arch: x64
-            platform: win
+            exe: CableScope.exe
           - target: windows-arm64
             os: windows-11-arm
             arch: arm64
-            platform: win
+            exe: CableScope.exe
           - target: macos-arm64
             os: macos-26
             arch: arm64
-            platform: mac
+            exe: CableScope.app/Contents/MacOS/CableScope
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -44,6 +44,7 @@ jobs:
           node-version: '24'
           architecture: ${{ matrix.arch }}
           cache: npm
+      - uses: dtolnay/rust-toolchain@stable
       - run: python -m unittest discover -s tests -v
       - run: npm ci --no-audit --no-fund
       - run: npm test
@@ -51,19 +52,18 @@ jobs:
       - run: python -m pip install -r requirements-build.txt
       - name: Build and test embedded native collector
         run: python scripts/build.py --target ${{ matrix.target }} --collector-only
-      - name: Package Electron executable or app
-        run: npm run desktop:package -- --${{ matrix.platform }} --${{ matrix.arch }}
-      - name: Test packaged Electron and embedded collector
-        run: node scripts/smoke_desktop.cjs
-      - name: Test final portable EXE
-        if: matrix.platform == 'win'
-        run: node scripts/smoke_desktop.cjs --portable
+      - name: Build native Tauri executable or app
+        run: npm run desktop:build
+      - name: Package portable release archive
+        run: python scripts/package_tauri.py ${{ matrix.target }}
+      - name: Extract portable release archive
+        run: python -c "import json,pathlib,zipfile; v=json.loads(pathlib.Path('package.json').read_text())['version']; a=pathlib.Path('dist/desktop')/('CableScope-%s-${{ matrix.target }}.zip'%v); d=pathlib.Path('dist/unpacked'); d.mkdir(parents=True,exist_ok=True); zipfile.ZipFile(a).extractall(d)"
+      - name: Test unpacked portable release
+        run: node scripts/smoke_tauri.cjs dist/unpacked/${{ matrix.exe }}
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: CableScope-${{ matrix.target }}
-          path: |
-            dist/desktop/CableScope-*.exe
-            dist/desktop/CableScope-*.zip
+          path: dist/desktop/CableScope-*.zip
           if-no-files-found: error
           retention-days: 14
   release:
@@ -82,7 +82,7 @@ jobs:
           pattern: CableScope-*
           path: release-assets
           merge-multiple: true
-      - name: Verify and publish four native clients
+      - name: Verify and publish three native clients
         run: python scripts/publish_release.py
         env:
           GITHUB_TOKEN: ${{ github.token }}

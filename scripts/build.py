@@ -19,7 +19,7 @@ from cablescope import __version__
 def build():
     parser = argparse.ArgumentParser()
     parser.add_argument("--target", required=True, choices=["windows-x64", "windows-arm64", "macos-arm64"])
-    parser.add_argument("--collector-only", action="store_true", help="Build the embedded collector for Electron")
+    parser.add_argument("--collector-only", action="store_true", help="Build the embedded collector for Tauri")
     args = parser.parse_args()
     win = sys.platform == "win32"
     actual = platform.machine().lower()

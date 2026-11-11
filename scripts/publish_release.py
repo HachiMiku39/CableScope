@@ -38,7 +38,7 @@ except urllib.error.HTTPError as error:
 if not release["draft"]:
     raise RuntimeError("This version is already published. Bump the version instead of replacing public binaries.")
 for path in sorted(folder.iterdir()):
-    if path.suffix not in (".exe", ".zip", ".txt"):
+    if path.suffix not in (".zip", ".txt"):
         continue
     existing = next((a for a in release["assets"] if a["name"] == path.name), None)
     if existing:
