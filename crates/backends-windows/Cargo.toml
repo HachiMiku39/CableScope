@@ -1,0 +1,13 @@
+[package]
+name = "cablescope-backends-windows"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+cablescope-analysis = { path = "../analysis" }
+cablescope-backends-traits = { path = "../backends-traits" }
+cablescope-core = { path = "../core" }
+serde_json = { version = "1", features = ["preserve_order"] }
+sha2 = "0.10"
