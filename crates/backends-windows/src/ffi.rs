@@ -482,9 +482,15 @@ mod tests {
     }
 
     #[test]
-    fn ctypes_win_error_text_is_reproduced() {
-        // `py -3 -c "str(ctypes.WinError(50))"` -> "[WinError 50] 不支持该请求。"
-        assert_eq!(win_error_text(50), "[WinError 50] 不支持该请求。");
-        assert_eq!(win_error_text(5), "[WinError 5] 拒绝访问。");
+    fn win_error_text_wraps_system_message() {
+        // 消息文本来自 FormatMessageW，随系统语言变化（中文机为
+        // "不支持该请求。"，英文机为 "The request is not supported."），
+        // 只固定 "[WinError N] " 包装与非空消息，不断言具体文案。
+        let text = win_error_text(50);
+        assert!(text.starts_with("[WinError 50] "), "{text}");
+        assert!(text.len() > "[WinError 50] ".len(), "{text}");
+        let access = win_error_text(5);
+        assert!(access.starts_with("[WinError 5] "), "{access}");
+        assert!(access.len() > "[WinError 5] ".len(), "{access}");
     }
 }
