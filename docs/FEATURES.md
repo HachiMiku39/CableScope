@@ -1,6 +1,6 @@
 # CableScope 0.3：已落地功能与证据
 
-实现方式是公开源码复核、Ghidra 调用点验证、独立 Python 采集和桌面应用内嵌的本地界面。没有修改用户提供的 WhatCable，也没有包含其授权模块、插件或二进制。
+实现方式是公开源码复核、Ghidra 调用点验证、Rust 原生采集引擎和桌面应用内嵌的本地界面。没有修改用户提供的 WhatCable，也没有包含其授权模块、插件或二进制。
 
 ## 与截图中的功能对应
 
@@ -47,12 +47,12 @@
 2026-11-11 在 Windows 11 26200 x64、连接 RTL9210B Type-C 固态盘的本机复核：`Get-PnpDevice -Class UCM` 返回「类不存在」，`root/wmi` 与 `root/cimv2` 均无 UCSI WMI 类（仅有 USB4 路由相关类），名称匹配 UCSI/UCM 的 PnP 节点为 0，因此 `ucsi_state=no_data_plane`。同机只读 Hub IOCTL 读出 2 条 Type-C 端口候选，连接态保持 `null`。这是本机负结果：证明该机固件未提供可读取的数据面，不证明其它机型也没有；未启用 Microsoft UCSI 测试接口，因为那需要写注册表并重启设备。
 
 ```sh
-python -m unittest discover -s tests -v
-node scripts/test_web.cjs
-python scripts/smoke.py
+cargo test --workspace --locked
+node scripts/test_web.cjs && node scripts/test_web.cjs --tauri
+node scripts/smoke_tauri.cjs
 ```
 
-39 项单元测试覆盖 ABI 的 80 字节布局和偏移、只读命令限制、SMC 内部错误、大小端、UUID 校验、引脚规则、合同归属、模式配对、电阻门槛与存储，另以合成数据覆盖 Windows 端口属性 pack(1) 布局、位掩码、两阶段长度、伴口循环与分组、UCSI 三态及连接态不反推。服务检查覆盖真实后端启动、静态资源、人工记录校验、报告导出、跨来源拒绝及退出。纯 JavaScript 测试覆盖实际模板渲染、候选端口全缺字段与转义，不等同于浏览器布局验证。当前浏览器预览工具超时，新版布局未完成实际浏览器截图复核。
+Rust workspace 单元测试以合成数据覆盖数值清洗、PD3 VDO 解码、SMC ABI 的 80 字节布局和偏移、只读命令限制、大小端、UUID 校验、引脚规则、合同归属、模式配对、电阻门槛、Windows 端口属性 pack(1) 布局、位掩码、两阶段长度、伴口循环与分组、UCSI 三态、存储与 IPC 分发校验，可在无硬件的运行器上通过。冒烟检查对真实构建产物启动渲染窗口、经 IPC 保存记录并导出报告；云运行器通常没有真实 USB-C 外设，构建成功不代表硬件覆盖。纯 JavaScript 测试覆盖实际模板渲染、候选端口全缺字段与转义，不等同于浏览器布局验证。当前浏览器预览工具超时，新版布局未完成实际浏览器截图复核。
 
 三平台由 GitHub Actions 原生编译并检查打包程序。云运行器通常没有真实 USB-C 外设，因此构建成功不代表 Windows ARM 或其它硬件已验证所有传感器。
 

@@ -6,7 +6,7 @@
   "license": "MIT",
   "private": true,
   "scripts": {
-    "test": "node scripts/test_web.cjs && node scripts/test_web.cjs --tauri && node scripts/test_web.cjs --tauri-global-http",
+    "test": "node scripts/test_web.cjs && node scripts/test_web.cjs --tauri",
     "desktop:dev": "tauri dev",
     "desktop:build": "tauri build"
   },

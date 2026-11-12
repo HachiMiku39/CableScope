@@ -1,5 +1,5 @@
-//! 阶段二的 Tauri IPC 数据路径：把 `cablescope/web/` 的静态文件与
-//! `api_request` 命令注册到同一个应用；Python collector 仅作环境变量回退。
+//! 阶段二的 Tauri IPC 数据路径：把 `web/` 的静态文件与
+//! `api_request` 命令注册到同一个应用。
 
 use tauri::{
     http::{header, Response, StatusCode},
@@ -19,22 +19,11 @@ pub fn is_frontend_url(url: &str) -> bool {
 
 // 前端四个静态文件编译期嵌入二进制，便携包在任意机器上都不依赖
 // 构建时的仓库路径（CARGO_MANIFEST_DIR 只存在于打包那台机器上）。
-const INDEX_HTML: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../cablescope/web/index.html"
-));
-const STYLE_CSS: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../cablescope/web/style.css"
-));
-const APP_JS: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../cablescope/web/app.js"
-));
-const CONNECTION_JS: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../cablescope/web/connection.js"
-));
+const INDEX_HTML: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../web/index.html"));
+const STYLE_CSS: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../web/style.css"));
+const APP_JS: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../web/app.js"));
+const CONNECTION_JS: &str =
+    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../web/connection.js"));
 
 fn file(name: &str) -> Option<&'static str> {
     match name {

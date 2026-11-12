@@ -11,7 +11,6 @@ use std::{
 };
 
 use cablescope_tauri::{
-    collector::{is_companion_url, is_owned_collector_url, Collector, Launch},
     engine_cmd::{self, EngineState},
     native,
     smoke::{self, SmokeArgs, SmokeResult},
@@ -24,68 +23,6 @@ use tauri::{
 use tauri_plugin_dialog::DialogExt;
 
 const RELEASES: &str = "https://github.com/HachiMiku39/CableScope/releases/latest";
-
-struct RuntimeState {
-    collector: Option<Collector>,
-    smoke: bool,
-}
-
-fn python_fallback() -> bool {
-    env::var("CABLESCOPE_COLLECTOR").as_deref() == Ok("python")
-}
-
-fn packaged() -> bool {
-    if env::var_os("CABLESCOPE_TAURI_DEV").is_some() {
-        return false;
-    }
-    env::current_exe()
-        .ok()
-        .and_then(|exe| exe.parent().map(|dir| dir.to_path_buf()))
-        .map(|dir| {
-            let name = if cfg!(windows) {
-                "CableScope.exe"
-            } else {
-                "CableScope"
-            };
-            dir.join("collector").join(name).is_file()
-        })
-        .unwrap_or(false)
-}
-
-fn launch(app: &AppHandle, smoke: &SmokeArgs) -> Launch {
-    if packaged() {
-        return Launch::Packaged {
-            resource_dir: app
-                .path()
-                .resource_dir()
-                .unwrap_or_else(|_| PathBuf::from(".")),
-            data_dir: smoke.data_dir.clone().or_else(|| packaged_data_dir(app)),
-        };
-    }
-    Launch::Development {
-        root: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".."),
-        data_dir: smoke.data_dir.clone(),
-    }
-}
-
-fn packaged_data_dir(app: &AppHandle) -> Option<PathBuf> {
-    let base = if cfg!(windows) {
-        std::env::var_os("LOCALAPPDATA")
-            .map(PathBuf::from)
-            .or_else(|| {
-                app.path()
-                    .home_dir()
-                    .ok()
-                    .map(|home| home.join("AppData/Local"))
-            })
-    } else {
-        app.path()
-            .home_dir()
-            .ok()
-            .map(|home| home.join("Library/Application Support"))
-    }?;
-    Some(base.join("CableScope"))
-}
 
 fn application_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
@@ -327,134 +264,6 @@ fn start_ipc(
     Ok(state)
 }
 
-fn start_python(app: &AppHandle, smoke: &SmokeArgs, ready: &Arc<AtomicBool>) -> Result<(), String> {
-    let handle = app.clone();
-    let collector =
-        Collector::start(launch(&handle, smoke)).map_err(|error| error.message().to_owned())?;
-    let base = collector.base();
-    app.manage(RuntimeState {
-        collector: Some(collector),
-        smoke: smoke.enabled,
-    });
-
-    let menu = application_menu(&handle).map_err(|_| "界面菜单无法创建。".to_owned())?;
-    let parsed = base
-        .parse()
-        .map_err(|_| "本机采集程序地址无效。".to_owned())?;
-    let window_url: tauri::utils::config::WebviewUrl = WebviewUrl::External(parsed);
-    let navigation_base = base.clone();
-    let navigation_ready = Arc::clone(ready);
-    let download_base = base.clone();
-    let smoke_handle = handle.clone();
-    let smoke_args = smoke.clone();
-    let smoke_ready = Arc::clone(ready);
-    let page_base = base.clone();
-    let page_ready = Arc::clone(ready);
-    let webview = WebviewWindowBuilder::new(&handle, "main", window_url)
-        .title("CableScope · 线缆实验室")
-        .inner_size(1360.0, 920.0)
-        .min_inner_size(850.0, 640.0)
-        .background_color(tauri::window::Color(245, 246, 250, 255))
-        .visible(!smoke.enabled)
-        .menu(menu)
-        .on_navigation(move |url| {
-            let allowed = url.as_str().starts_with(&navigation_base)
-                && is_owned_collector_url(&navigation_base).is_some();
-            if allowed {
-                navigation_ready.store(true, Ordering::SeqCst);
-            }
-            allowed
-        })
-        .on_new_window(move |url, _features| {
-            if url.as_str() == RELEASES {
-                let _ = tauri_plugin_opener::open_url(RELEASES, None::<&str>);
-            }
-            NewWindowResponse::Deny
-        })
-        .on_download(move |webview, event| {
-            if let DownloadEvent::Requested { url, destination } = event {
-                if !is_companion_url(&download_base, url.as_str()) {
-                    return false;
-                }
-                let suggested = url
-                    .path_segments()
-                    .and_then(|segments| segments.last())
-                    .filter(|name| !name.is_empty())
-                    .unwrap_or("CableScope-report")
-                    .to_owned();
-                let dialog = webview
-                    .app_handle()
-                    .dialog()
-                    .file()
-                    .set_title("导出 CableScope 报告")
-                    .set_file_name(suggested)
-                    .set_directory(
-                        webview
-                            .app_handle()
-                            .path()
-                            .download_dir()
-                            .unwrap_or_else(|_| PathBuf::from(".")),
-                    );
-                if let Some(path) = dialog.blocking_save_file() {
-                    if let Ok(path) = path.into_path() {
-                        *destination = path;
-                        return true;
-                    }
-                }
-                false
-            } else {
-                true
-            }
-        })
-        .on_page_load(move |window, payload| {
-            if matches!(payload.event(), PageLoadEvent::Finished)
-                && payload.url().as_str().starts_with(&page_base)
-            {
-                page_ready.store(true, Ordering::SeqCst);
-                if let Some(state) = window.try_state::<RuntimeState>() {
-                    if state.smoke {
-                        let smoke_args = smoke_args.clone();
-                        let handle = smoke_handle.clone();
-                        let base = page_base.clone();
-                        let ready = Arc::clone(&smoke_ready);
-                        std::thread::spawn(move || {
-                            std::thread::sleep(Duration::from_millis(500));
-                            let result =
-                                match smoke::run_http(&base, || ready.load(Ordering::SeqCst)) {
-                                    Ok(checks) => SmokeResult {
-                                        ok: true,
-                                        platform: Some(checks.platform),
-                                        ui: Some(true),
-                                        save: Some(checks.save),
-                                        report: Some(checks.report),
-                                        navigation: Some(true),
-                                        arch: Some(env::consts::ARCH.to_owned()),
-                                        shell: Some("tauri".to_owned()),
-                                        mode: Some("python-collector".to_owned()),
-                                        devices: None,
-                                        ports: None,
-                                        error: None,
-                                        version: Some(env!("CABLESCOPE_VERSION").to_owned()),
-                                    },
-                                    Err(error) => SmokeResult::failure(error),
-                                };
-                            if let Some(state) = handle.try_state::<RuntimeState>() {
-                                state.collector.as_ref().map(Collector::stop);
-                            }
-                            finish_smoke(&smoke_args, result, &handle);
-                        });
-                    }
-                }
-            }
-        })
-        .build()
-        .map_err(|_| "应用窗口无法创建。".to_owned())?;
-    if smoke.enabled {
-        let _ = webview.hide();
-    }
-    Ok(())
-}
-
 fn main() {
     let args = SmokeArgs::parse(env::args_os().skip(1));
     let smoke = args.clone();
@@ -465,37 +274,23 @@ fn main() {
         }
     });
 
-    let ipc = !python_fallback();
     let builder = tauri::Builder::default()
         .plugin(single_instance)
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(smoke.clone())
         .invoke_handler(tauri::generate_handler![engine_cmd::api_request]);
-    let builder = if ipc {
-        native::register_frontend(builder)
-    } else {
-        builder
-    };
-    builder
+    native::register_frontend(builder)
         .setup(move |app| {
             let handle = app.handle().clone();
             let ready = Arc::new(AtomicBool::new(false));
-            let result = if ipc {
-                start_ipc(&handle, &smoke, &ready).map(|_| ())
-            } else {
-                start_python(&handle, &smoke, &ready)
-            };
-            if let Err(message) = result {
+            if let Err(message) = start_ipc(&handle, &smoke, &ready).map(|_| ()) {
                 failure(message, &smoke, &handle);
             }
             Ok(())
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
-                if let Some(state) = window.try_state::<RuntimeState>() {
-                    state.collector.as_ref().map(Collector::stop);
-                }
                 window.app_handle().exit(0);
             }
         })

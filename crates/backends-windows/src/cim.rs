@@ -216,17 +216,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn command_repr_matches_python_subprocess_errors() {
+    fn command_text_is_fully_rendered() {
         assert!(command_text().starts_with("['powershell.exe', '-NoLogo', '-NoProfile',"));
         assert!(command_text().ends_with("-Depth 5 -Compress\\n\"]"));
-        // Python subprocess.TimeoutExpired / CalledProcessError 的文案里用的是
-        // repr(cmd)；这里固定完整命令文本，避免降级 errors 出现占位符。
+        // 错误文案使用 repr 风格的完整命令文本，避免降级 errors 出现占位符。
         assert!(command_text().contains("-Command"));
         assert!(command_text().contains("Get-CimInstance"));
     }
 
     #[test]
-    fn powershell_script_matches_python_source() {
+    fn powershell_script_contains_expected_queries() {
         assert!(PS_SCRIPT.contains("Get-CimInstance -Namespace root/wmi -ClassName BatteryStatus"));
         assert!(PS_SCRIPT.contains("Get-PnpDevice -Class UCM -ErrorAction Stop"));
         assert!(PS_SCRIPT.contains("UCSI data plane probe unavailable"));
@@ -252,14 +251,13 @@ mod tests {
 }
 
 #[cfg(test)]
-mod source_parity_tests {
+mod script_text_tests {
     use super::PS_SCRIPT;
 
     #[test]
-    fn ps_script_is_the_python_source_verbatim() {
-        // 由 `py -3` 对 `windows.py` 做 AST literal_eval 后固化的脚本全文。
-        // 任何 PowerShell 变更都必须先改 Python 权威规格，再同步此常量。
-        const PYTHON_PS_SCRIPT: &str = "\n$ErrorActionPreference = 'Stop'\n[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)\n$b = @(); $devices = @(); $errors = @(); $ucsi_state = 'query_failed'\ntry { $b = @(Get-CimInstance -Namespace root/wmi -ClassName BatteryStatus | Select-Object PowerOnline,Charging,Discharging,ChargeRate,DischargeRate,Voltage) } catch { $errors += 'BatteryStatus unavailable' }\ntry { $devices = @(Get-PnpDevice -PresentOnly | Where-Object { $_.InstanceId -like 'USB\\*' } | Select-Object FriendlyName,InstanceId,Status) } catch { $errors += 'PnP inventory unavailable' }\ntry {\n  $ucm = @()\n  try { $ucm = @(Get-PnpDevice -Class UCM -ErrorAction Stop) } catch { if ($_.FullyQualifiedErrorId -notlike 'CmdletizationQuery_NotFound_PNPClass*') { throw } }\n  $wmi = @()\n  foreach ($ns in @('root/wmi','root/cimv2')) { $wmi += @(Get-CimClass -Namespace $ns -ClassName '*UCSI*' -ErrorAction Stop | Select-Object -First 1 Namespace,ClassName) }\n  $named = @(Get-PnpDevice -PresentOnly -ErrorAction Stop | Where-Object { $_.FriendlyName -match 'UCSI|UCM' -or $_.InstanceId -match 'UCSI|UCM' } | Select-Object -First 1 FriendlyName,InstanceId,Class)\n  if ($ucm.Count -gt 0 -or $wmi.Count -gt 0 -or $named.Count -gt 0) { $ucsi_state = 'available' } else { $ucsi_state = 'no_data_plane' }\n} catch { $ucsi_state = 'query_failed'; $errors += 'UCSI data plane probe unavailable' }\n@{ batteries=$b; devices=$devices; ucsi_state=$ucsi_state; errors=$errors } | ConvertTo-Json -Depth 5 -Compress\n";
-        assert_eq!(PS_SCRIPT, PYTHON_PS_SCRIPT);
+    fn ps_script_matches_pinned_text() {
+        // PowerShell 脚本全文的权威副本：任何脚本变更都必须同步更新此常量。
+        const PINNED_PS_SCRIPT: &str = "\n$ErrorActionPreference = 'Stop'\n[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)\n$b = @(); $devices = @(); $errors = @(); $ucsi_state = 'query_failed'\ntry { $b = @(Get-CimInstance -Namespace root/wmi -ClassName BatteryStatus | Select-Object PowerOnline,Charging,Discharging,ChargeRate,DischargeRate,Voltage) } catch { $errors += 'BatteryStatus unavailable' }\ntry { $devices = @(Get-PnpDevice -PresentOnly | Where-Object { $_.InstanceId -like 'USB\\*' } | Select-Object FriendlyName,InstanceId,Status) } catch { $errors += 'PnP inventory unavailable' }\ntry {\n  $ucm = @()\n  try { $ucm = @(Get-PnpDevice -Class UCM -ErrorAction Stop) } catch { if ($_.FullyQualifiedErrorId -notlike 'CmdletizationQuery_NotFound_PNPClass*') { throw } }\n  $wmi = @()\n  foreach ($ns in @('root/wmi','root/cimv2')) { $wmi += @(Get-CimClass -Namespace $ns -ClassName '*UCSI*' -ErrorAction Stop | Select-Object -First 1 Namespace,ClassName) }\n  $named = @(Get-PnpDevice -PresentOnly -ErrorAction Stop | Where-Object { $_.FriendlyName -match 'UCSI|UCM' -or $_.InstanceId -match 'UCSI|UCM' } | Select-Object -First 1 FriendlyName,InstanceId,Class)\n  if ($ucm.Count -gt 0 -or $wmi.Count -gt 0 -or $named.Count -gt 0) { $ucsi_state = 'available' } else { $ucsi_state = 'no_data_plane' }\n} catch { $ucsi_state = 'query_failed'; $errors += 'UCSI data plane probe unavailable' }\n@{ batteries=$b; devices=$devices; ucsi_state=$ucsi_state; errors=$errors } | ConvertTo-Json -Depth 5 -Compress\n";
+        assert_eq!(PS_SCRIPT, PINNED_PS_SCRIPT);
     }
 }

@@ -20,11 +20,8 @@ def portable_files():
     # A raw Windows build can place runtime DLLs and debug symbols beside the exe.
     for suffix in (".dll", ".pdb"):
         files.extend(sorted(RELEASE.glob("*" + suffix)))
-    # Tauri copies these resources beside the raw Windows exe; carry them into
-    # the portable archive so CABLESCOPE_COLLECTOR=python still works.
-    collector = RELEASE / "collector"
-    if (collector / "CableScope.exe").is_file():
-        files.extend(sorted(item for item in collector.rglob("*") if item.is_file() or item.is_symlink()))
+    # Tauri copies the bundled licenses beside the raw Windows exe; carry them
+    # into the portable archive.
     licenses = RELEASE / "licenses"
     if not licenses.is_dir():
         raise RuntimeError("Missing bundled licenses: " + str(licenses))

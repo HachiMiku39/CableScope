@@ -1,8 +1,8 @@
-//! 最小 CLI：本波只实现 `run.py --json` 的单次采集输出。
+//! 最小 CLI：`--json` 单次采集输出。
 //!
-//! 键序与 `run.py` 一致：`backend.sample()` → `enrich()` → `at` →
-//! `diagnostics()`；`json.dumps(..., ensure_ascii=False, indent=2)` 对应
-//! `serde_json::to_string_pretty`（不转义非 ASCII，2 空格缩进）。
+//! 快照键序固定为 `backend.sample()` → `enrich()` → `at` →
+//! `diagnostics()`；输出用 `serde_json::to_string_pretty`（不转义非 ASCII，
+//! 2 空格缩进）。
 
 use std::io::{self, Write};
 use std::process::ExitCode;

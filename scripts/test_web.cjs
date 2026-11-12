@@ -1,18 +1,15 @@
 // Exercise UI rendering as pure JavaScript, without browser or hardware access.
 const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict');
-const root=path.resolve(__dirname,'..'),html=fs.readFileSync(path.join(root,'cablescope/web/index.html'),'utf8');
+const root=path.resolve(__dirname,'..'),html=fs.readFileSync(path.join(root,'web/index.html'),'utf8');
 const ctx=new Proxy({},{get:()=>()=>{}}),elements=new Map();
 for(const match of html.matchAll(/id="([^"]+)"/g))elements.set(match[1],{value:'',innerHTML:'',textContent:'',open:false,hidden:false,disabled:false,
   getBoundingClientRect:()=>({width:700,height:195}),getContext:()=>ctx,showModal(){this.open=true;},close(){this.open=false;}});
 elements.get('chart-mode').value='system';
 const window={devicePixelRatio:1,addEventListener(){},dispatchEvent(){}},document={title:'CableScope · 线缆实验室',getElementById:id=>{assert(elements.has(id),'Unknown UI id: '+id);return elements.get(id);},createElement:()=>({click(){}})};
 const stateFor=()=>({snapshot:{at:'2026-11-10T09:00:00Z',platform:'Windows',power:{input_w:25,battery_net_w:0},ports:[],devices:[],fabric:[],display_links:[],displays:[],diagnostics:[],errors:[],limitations:[],resistance:{status:'unavailable'}},records:[],events:[],history:[]});
-const invocations=[],sandbox={window,document,location:{hostname:'127.0.0.1',protocol:'http:',pathname:'/AAAAAAAAAAAAAAAAAAAAAAAA/'},Headers,AbortSignal,Blob,URL,
-  setTimeout:()=>0,setInterval:()=>0,Event:class{},fetch:()=>{throw Error('Network access is not part of this render test');},console};
-if(process.argv.includes('--tauri-global-http')){
-  window.__TAURI__={core:{invoke:async()=>{throw Error('IPC must not be used on the Python collector URL');}}};
-}
-if(process.argv.includes('--tauri')&&!process.argv.includes('--tauri-global-http')){
+const invocations=[],sandbox={window,document,location:{hostname:'localhost',protocol:'http:',pathname:'/'},Blob,URL,
+  setTimeout:()=>0,setInterval:()=>0,Event:class{},console};
+if(process.argv.includes('--tauri')){
   window.__TAURI__={core:{invoke:async(name,args)=>{invocations.push({name,args});
     const path=args.path;
     if(path==='api/state')return {status:200,json:stateFor(),headers:{'content-type':'application/json; charset=utf-8'}};
@@ -25,7 +22,7 @@ if(process.argv.includes('--tauri')&&!process.argv.includes('--tauri-global-http
   sandbox.location={hostname:'cablescope.localhost',protocol:'cablescope:',pathname:'/index.html'};
 }
 vm.createContext(sandbox);
-for(const file of ['connection.js','app.js'])vm.runInContext(fs.readFileSync(path.join(root,'cablescope/web',file),'utf8'),sandbox,{filename:file});
+for(const file of ['connection.js','app.js'])vm.runInContext(fs.readFileSync(path.join(root,'web',file),'utf8'),sandbox,{filename:file});
 const port={id:'p1',name:'<img src=x onerror=bad>',kind:'USB-C',connected:true,orientation:'方向 1',transports:['USB3'],
   pin_configuration:{tx1:1},pin_map:{rows:[[{id:'A1',signal:'GND',class:'fixed'}]],note:'逻辑路由'},
   output_power:{watts:5.2,voltage_v:5.2,current_a:1},contract:{watts:100,voltage_v:20,current_a:5},
@@ -77,7 +74,7 @@ if(!process.argv[2]||process.argv[2].startsWith('--')){
 }
 elements.get('chart-mode').value='ports';elements.get('chart-mode').onchange();
 assert(elements.get('chart-legend').innerHTML.length>0);
-if(process.argv.includes('--tauri')&&!process.argv.includes('--tauri-global-http')){
+if(process.argv.includes('--tauri')){
   assert(window.CableLink.local&&window.CableLink.connected,'Tauri window must be treated as local');
   (async()=>{
     const r=await window.CableLink.request('api/state');
@@ -94,10 +91,5 @@ if(process.argv.includes('--tauri')&&!process.argv.includes('--tauri-global-http
     assert(invocations.find(x=>x.args.path==='api/save').args.options.body.name==='我的线','IPC save must forward a parsed JSON body');
     console.log('Tauri IPC transport, compatible Response and render passed.');
   })().catch(error=>{console.error(error);process.exitCode=1;});
-}
-if(process.argv.includes('--tauri-global-http')){
-  assert(window.CableLink.local&&window.CableLink.connected,'HTTP collector URL must be treated as local');
-  assert(!window.CableLink.tauri,'Python collector window must not use IPC');
-  window.CableLink.request('api/state').then(()=>{console.error('HTTP fetch path was not used');process.exitCode=1;},()=>console.log('Tauri global on Python collector URL keeps the HTTP path.'));
 }
 console.log('UI rendering, power cards, diagrams, comparison, history filter and escaping passed. No browser layout claim.');

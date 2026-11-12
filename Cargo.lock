@@ -446,10 +446,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cablescope-server"
-version = "0.4.0"
-
-[[package]]
 name = "cablescope-smc"
 version = "0.4.0"
 dependencies = [

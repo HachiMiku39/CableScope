@@ -1,5 +1,5 @@
-//! Tauri IPC 后端：`cablescope/web/connection.js` 的 `fetch` 形状在壳内直接
-//! 映射到 `cablescope_engine`，不再经过本机 HTTP 服务。
+//! Tauri IPC 后端：`web/connection.js` 的 `fetch` 形状在壳内直接
+//! 映射到 `cablescope_engine`，不经过本机 HTTP 服务。
 
 use std::{
     fs,

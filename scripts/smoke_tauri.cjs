@@ -6,7 +6,6 @@ const supplied=process.argv[2];
 const exe=supplied||path.join(root,'target/release','CableScope'+(process.platform==='win32'?'.exe':''));
 if(!supplied&&!fs.existsSync(exe)){console.error('找不到构建产物 '+exe+'，请先运行 cargo build --release -p CableScope，或显式传入可执行文件路径。');process.exit(1);}
 const env={...process.env};
-delete env.CABLESCOPE_COLLECTOR;
 const temp=fs.mkdtempSync(path.join(os.tmpdir(),'cablescope-tauri-check-')),output=path.join(temp,'result.json');
 const child=spawn(exe,['--smoke-test','--smoke-output='+output,'--smoke-data-dir='+path.join(temp,'runtime')],{stdio:['ignore','pipe','pipe'],windowsHide:true,shell:false,env});
 let errors='';child.stderr.on('data',data=>{errors=(errors+data).slice(-3000);});child.stdout.resume();

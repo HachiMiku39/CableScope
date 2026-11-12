@@ -8,7 +8,6 @@ members = [
     "crates/backends-macos",
     "crates/backends-windows",
     "crates/smc",
-    "crates/server",
     "crates/cli",
     "src-tauri",
 ]

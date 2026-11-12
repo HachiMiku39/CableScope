@@ -95,7 +95,7 @@ otool -ov -arch arm64 /Applications/WhatCable.app/Contents/MacOS/WhatCable
 
 ## 7. 独立免费实现与验证
 
-CableScope 使用 Python 标准库、ctypes 和各平台系统组件，中文界面在本机浏览器呈现。Mac 通过 IOKit 公共入口读取注册表属性，没有向 USB 总线发送深度探测请求。Windows 使用公开 Hub 查询 IOCTL、GetSystemPowerStatus、CIM / PnP 和 EnumDisplaySettingsW。依据[微软文档](https://learn.microsoft.com/en-us/windows-hardware/drivers/usbcon/ucsi)，UCSI 测试接口默认未开启，因此首版 Windows 不宣称能读取所有线缆 E-Marker 或 PD 档位。
+CableScope 为 Rust 原生实现（Tauri 壳加系统 API 手写 FFI），中文界面内嵌于桌面窗口。Mac 通过 IOKit 公共入口读取注册表属性，没有向 USB 总线发送深度探测请求。Windows 使用公开 Hub 查询 IOCTL、GetSystemPowerStatus、CIM / PnP 和 EnumDisplaySettingsW。依据[微软文档](https://learn.microsoft.com/en-us/windows-hardware/drivers/usbcon/ucsi)，UCSI 测试接口默认未开启，因此首版 Windows 不宣称能读取所有线缆 E-Marker 或 PD 档位。
 
 已在本机 Apple Silicon 环境完成：14 项解码、结构布局和持久化测试；真实快照读取；本机 HTTP 服务的资源加载、跨来源请求拒绝、手动快照保存、JSON / CSV 导出和退出检查。一次快照读取到 4 个端口、3 份 E-Marker 与系统输入功率。显示器枚举在本环境返回空列表，因此当前未验证真实显示器模式读取的硬件结果。
 

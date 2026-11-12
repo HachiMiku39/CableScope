@@ -3,10 +3,7 @@ use std::{ffi::OsString, path::PathBuf, time::Duration};
 use serde::Serialize;
 use serde_json::{json, Value};
 
-use crate::{
-    collector::{collector_port, http_request, request_path},
-    engine_cmd::{self, EngineState},
-};
+use crate::engine_cmd::{self, EngineState};
 
 const SMOKE_NAME: &str = "Tauri smoke";
 const STATE_TIMEOUT: Duration = Duration::from_secs(40);
@@ -107,109 +104,6 @@ pub struct SmokeChecks {
     pub report: bool,
     pub devices: usize,
     pub ports: usize,
-}
-
-pub fn run_http(base: &str, navigation: impl Fn() -> bool) -> Result<SmokeChecks, String> {
-    let port = collector_port(base).ok_or("本机采集程序地址无效。")?;
-    let state_path = request_path(base, "api/state").ok_or("本机采集程序地址无效。")?;
-    let save_path = request_path(base, "api/save").ok_or("本机采集程序地址无效。")?;
-    let report_path = request_path(base, "api/report").ok_or("本机采集程序地址无效。")?;
-
-    let deadline = std::time::Instant::now() + STATE_TIMEOUT;
-    let mut state: Value;
-    loop {
-        let (status, body) = http_request(
-            port,
-            "GET",
-            &std::path::Path::new(&state_path),
-            None,
-            Duration::from_secs(5),
-        )
-        .map_err(|_| "无法读取本机采集状态。".to_owned())?;
-        if status != 200 {
-            return Err("本机采集状态响应异常。".into());
-        }
-        state = serde_json::from_str(&body).map_err(|_| "本机采集状态格式异常。".to_owned())?;
-        if !still_loading(&state) {
-            break;
-        }
-        if std::time::Instant::now() >= deadline {
-            return Err("本机采集状态加载超时。".into());
-        }
-        std::thread::sleep(Duration::from_millis(500));
-    }
-    let platform = state
-        .pointer("/snapshot/platform")
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .to_owned();
-    if platform != "Windows" && platform != "macOS" {
-        return Err("本机采集程序未生成平台快照。".into());
-    }
-    let snapshot = state.get("snapshot").unwrap_or(&Value::Null);
-    if !snapshot.get("ports").and_then(Value::as_array).is_some() {
-        return Err("本机采集状态缺少端口列表。".into());
-    }
-    let devices = snapshot
-        .get("devices")
-        .and_then(Value::as_array)
-        .map(Vec::len)
-        .unwrap_or(0);
-    let ports = snapshot
-        .get("ports")
-        .and_then(Value::as_array)
-        .map(Vec::len)
-        .unwrap_or(0);
-
-    if !navigation() {
-        return Err("窗口未确认加载本机页面。".into());
-    }
-
-    let body = json!({
-        "name": SMOKE_NAME,
-        "notes": "synthetic test record",
-        "cable_info": { "length_m": 1 }
-    })
-    .to_string();
-    let (status, response) = http_request(
-        port,
-        "POST",
-        std::path::Path::new(&save_path),
-        Some(&body),
-        Duration::from_secs(5),
-    )
-    .map_err(|_| "保存记录失败。".to_owned())?;
-    if status != 200 || !response.contains("\"ok\":true") {
-        return Err("保存记录失败。".into());
-    }
-
-    let (status, body) = http_request(
-        port,
-        "GET",
-        std::path::Path::new(&report_path),
-        None,
-        Duration::from_secs(5),
-    )
-    .map_err(|_| "读取报告失败。".to_owned())?;
-    if status != 200 {
-        return Err("读取报告失败。".into());
-    }
-    let report: Value = serde_json::from_str(&body).map_err(|_| "报告格式异常。".to_owned())?;
-    let found = report
-        .pointer("/records/0/name")
-        .and_then(Value::as_str)
-        .map(|name| name == SMOKE_NAME)
-        .unwrap_or(false);
-    if !found {
-        return Err("报告缺少已保存记录。".into());
-    }
-    Ok(SmokeChecks {
-        platform,
-        save: true,
-        report: true,
-        devices,
-        ports,
-    })
 }
 
 fn still_loading(state: &Value) -> bool {

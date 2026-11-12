@@ -16,7 +16,7 @@
 
 三个平台都是便携压缩包，无需安装、不写注册表。Windows 版依赖系统自带的 WebView2 运行时（Windows 11 预装；个别 Windows 10 需先装 [WebView2 Evergreen](https://developer.microsoft.com/microsoft-edge/webview2/)）。客户端内置 Rust 采集引擎，不必另外安装运行环境。打开后自动开始只读采集，关闭窗口或点击“退出”结束。数据保存在本机应用数据目录，不与其它实例冲突。
 
-程序的界面不开启 Node.js 等宿主脚本权限，只与本机采集引擎通信；下载页与外链由系统浏览器打开。导出时可选择文件位置。免费、开源、无需账户、无授权激活。
+程序的界面不开启 shell、文件系统等宿主权限，只与本机采集引擎通信；下载页与外链由系统浏览器打开。导出时可选择文件位置。免费、开源、无需账户、无授权激活。
 
 当前没有商业开发者签名或 Apple 公证。Mac 包只做临时签名；系统可能要求在“隐私与安全性”中允许打开已确认来源的应用。Windows 可能显示未知发布者。Release 附带 `SHA256SUMS.txt` 校验文件。
 
@@ -55,21 +55,21 @@ Windows 普通 USB Hub 端口与机身 USB-C 口没有直接的一一对应关�
 
 - 打包版 Windows：`%LOCALAPPDATA%\CableScope\history.sqlite3`
 - 打包版 Mac：`~/Library/Application Support/CableScope/history.sqlite3`
-- 源码运行：程序旁的 `data/history.sqlite3`
 
 采样间隔约五秒，每次保留采样时间；硬件读数可能由系统自行缓存。数据库保留最新 5000 次采样、最多 500 份手动快照；界面展示最近 50 份快照。插拔事件仅保留本次运行的最近 100 次。备份数据库即可保留全部记录。默认不保存序列号、MAC 地址、主机名。导出的报告仍包含设备名称、VID/PID、模式和时间，请按需分享。
 
 ## 从源码运行
 
-Python 3.9+，无第三方运行依赖：
+需要 Rust 稳定工具链与 Node.js 24：
 
 ```sh
-python3 run.py
-python3 run.py --json
-python3 run.py --no-browser --data-dir /path/to/test-data
+npm ci
+npm run desktop:dev              # 开发调试（Tauri 壳 + Rust 引擎，本机窗口）
+npm run desktop:build            # 产出 target/release 原生可执行文件 / 应用
+node scripts/smoke_tauri.cjs     # 对构建产物冒烟：真实渲染窗口 + IPC 保存/报告
 ```
 
-Windows 使用 `py -3 run.py`。Mac 也可双击 `启动 Mac.command`，Windows 可双击 `启动 Windows.bat`。这些源码启动器需要预先安装 Python；云编译下载包自带 Python。
+采集引擎也可以脱离界面单次输出 JSON：`cargo run -p cablescope-cli -- --json`。
 
 ## GitHub 云编译
 
@@ -77,16 +77,16 @@ Windows 使用 `py -3 run.py`。Mac 也可双击 `启动 Mac.command`，Windows 
 
 每组先测试解码、SMC ABI、诊断与数据存储，再编译 Rust 引擎 + Tauri 壳并打包便携压缩包（`scripts/package_tauri.py`），随后解压产物并启动真实客户端检查页面渲染、硬件快照、保存和报告。最后汇集三个平台产物、核验格式与 SHA-256，以草稿上传完整资产后一次性公开 Release。
 
-GitHub 虚拟机通常没有真实 USB-C 配件，构建与启动成功不能证明硬件覆盖；两平台的采集差异仍以上表为准。Pull Request 只构建，不发布。正式发布需提升 `package.json` 和 Python 版本；已发布版本不会自动覆盖。
+GitHub 虚拟机通常没有真实 USB-C 配件，构建与启动成功不能证明硬件覆盖；两平台的采集差异仍以上表为准。Pull Request 只构建，不发布。正式发布需同步提升 `package.json`、`src-tauri/tauri.conf.json` 与根 `Cargo.toml`（`[workspace.package]`）的版本号（构建期强制校验一致）；已发布版本不会自动覆盖。
 
 ```sh
-python -m unittest discover -s tests -v
+cargo test --workspace --locked
 npm ci
 npm test
-python scripts/smoke.py
+node scripts/smoke_tauri.cjs
 ```
 
-开发 Tauri 界面：`npm ci && npm run desktop:dev`（本机需 Rust 工具链）。客户端编译在 GitHub 进行；`scripts/build.py --collector-only` 仅为 Python 回退路径生成内嵌采集程序。
+开发 Tauri 界面：`npm ci && npm run desktop:dev`（本机需 Rust 工具链）。客户端编译在 GitHub 进行。
 
 ## 研究与证据
 
