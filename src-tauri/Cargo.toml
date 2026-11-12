@@ -1,0 +1,38 @@
+[package]
+name = "CableScope"
+version.workspace = true
+description = "CableScope desktop shell"
+authors = ["CableScope contributors"]
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+default-run = "CableScope"
+
+[lib]
+name = "cablescope_tauri"
+path = "src/lib.rs"
+
+[[bin]]
+name = "CableScope"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+serde_json = "1"
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-single-instance = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+cablescope-engine = { path = "../crates/engine" }
+cablescope-backends-traits = { path = "../crates/backends-traits" }
+
+[target.'cfg(windows)'.dependencies]
+cablescope-backends-windows = { path = "../crates/backends-windows" }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+cablescope-backends-macos = { path = "../crates/backends-macos" }
+

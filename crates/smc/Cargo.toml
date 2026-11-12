@@ -1,0 +1,10 @@
+[package]
+name = "cablescope-smc"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+cablescope-core = { path = "../core" }
+serde_json = { version = "1", features = ["preserve_order"] }

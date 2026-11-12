@@ -1,0 +1,1 @@
+This directory exists only because Tauri 2 requires a frontendDist path; the app window loads the collector URL at runtime.

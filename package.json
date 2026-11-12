@@ -5,59 +5,12 @@
   "author": "CableScope contributors",
   "license": "MIT",
   "private": true,
-  "main": "desktop/main.cjs",
   "scripts": {
-    "start": "electron .",
-    "test": "node --test desktop/test/collector.test.cjs && node scripts/test_web.cjs",
-    "desktop:package": "electron-builder --publish never"
+    "test": "node scripts/test_web.cjs && node scripts/test_web.cjs --tauri",
+    "desktop:dev": "tauri dev",
+    "desktop:build": "tauri build"
   },
   "devDependencies": {
-    "electron": "45.2.3",
-    "electron-builder": "26.18.0"
-  },
-  "build": {
-    "appId": "org.cablescope.desktop",
-    "productName": "CableScope",
-    "asar": true,
-    "directories": {
-      "output": "dist/desktop"
-    },
-    "files": [
-      "desktop/**/*.cjs",
-      "!desktop/test/**",
-      "package.json",
-      "LICENSE",
-      "THIRD_PARTY_NOTICES.md"
-    ],
-    "extraResources": [
-      {
-        "from": "build/runtime/CableScope",
-        "to": "collector"
-      },
-      {
-        "from": "licenses",
-        "to": "licenses"
-      }
-    ],
-    "mac": {
-      "target": [
-        "zip"
-      ],
-      "category": "public.app-category.utilities",
-      "minimumSystemVersion": "15.0",
-      "identity": "-",
-      "hardenedRuntime": false,
-      "artifactName": "CableScope-${version}-macos-${arch}.zip"
-    },
-    "win": {
-      "target": [
-        "portable"
-      ],
-      "signAndEditExecutable": false,
-      "artifactName": "CableScope-${version}-windows-${arch}.exe"
-    },
-    "portable": {
-      "requestExecutionLevel": "user"
-    }
+    "@tauri-apps/cli": "^2"
   }
 }
